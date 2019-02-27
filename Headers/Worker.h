@@ -1,21 +1,22 @@
 #include "Profession.h"
+#include <stdlib.h>
 #include "HourContract.h"
 #include <string.h>
 
 struct Worker
 {
-	string Name;
+	char Name[100];
 	int Age;
-	Profession Profession;
-	HourContract *Contracts;
+	struct Profession Profession;
+	struct HourContract *Contracts;
 };
 
-void SetHourContract (HourContract *contracts, int size)
+void SetHourContract (struct HourContract *contracts, int size)
 {
-	contracts = (HourContract *) malloc(size * sizeof(HourContract));
+	contracts = (struct HourContract *) malloc(size * sizeof(struct HourContract));
 }
 
-void AddContract (HourContract *contracts, HourContract contract)
+void AddContract (struct HourContract *contracts, struct HourContract contract)
 {
 	int i = 0;
 	
@@ -26,7 +27,7 @@ void AddContract (HourContract *contracts, HourContract contract)
 	contracts[i] = contract;
 }
 
-float TotalValue(HourContract *contracts, int size)
+float TotalValue(struct HourContract *contracts, int size)
 {
 	float sum = 0.0f;
 	int i;

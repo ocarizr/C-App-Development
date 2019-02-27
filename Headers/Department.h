@@ -1,6 +1,6 @@
 #include <string.h>
 
-typedef struct Department
+struct Department
 {
-	string Name;
-}Department;
+	char Name[100];
+};

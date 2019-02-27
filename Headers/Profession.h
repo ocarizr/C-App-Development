@@ -2,10 +2,10 @@
 #include "Enums\WorkerLevel.h"
 #include <string.h>
 
-typdef struct Profession
+struct Profession
 {
-	string Name;
+	char Name[100];
 	float Salary;
 	WorkerLevel workerLevel;
-	Department Department;
-}Profession;
+	struct Department Department;
+};

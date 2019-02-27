@@ -1,12 +1,12 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "Headers\Worker.h"
-#include "Headers\HourContract.h"
+// #include "Headers\HourContract.h"
 #include <string.h>
 
 int main()
 {
-	Worker worker;
+	struct Worker worker;
 	int index;
 	
 	printf("Worker's name: ");
@@ -16,7 +16,7 @@ int main()
 	printf("Worker's Profession: ");
 	scanf("%s", &worker.Profession.Name);
 	printf("Worker's Level: ");
-	string workerLevel;
+	char workerLevel[100];
 	scanf("%s", &workerLevel);
 	
 	if (strcmp(workerLevel, "Trainee"))
@@ -40,17 +40,17 @@ int main()
 	
 	char option;
 	
-	while (option != 'n' || option != 'y')
+	while (option != 'n' && option != 'y')
 	{
 		printf("There's any freelancer contract for this worker(y/n)? ");
 		scanf("%c", &option);
 		
 		if (option != 'y' && option != 'n')
 		{
-			printf("Invalid input.");
+			printf("Invalid input.\n");
 		} else if (option == 'n')
 		{
-			printf ("That's fine, thanks.")
+			printf ("That's fine, thanks.\n");
 		} else
 		{
 			int size;
@@ -61,9 +61,9 @@ int main()
 
 			for(index = 0; index < size; index++)
 			{
-				HourContract contract;
+				struct HourContract contract;
 				
-				printf("How many hours fot the contract number %d: ", (i + 1));
+				printf("How many hours for the contract number %d: ", (index + 1));
 				scanf("%d", &contract.Hours);
 				printf("How many he received by hour: ");
 				scanf("%d", &contract.HourValue);
@@ -80,7 +80,7 @@ int main()
 	printf("Worker freelancer contracts:\n");
 	
 	index = 0;
-	while (worker.Contracts[index] != null)
+	while (worker.Contracts[index].Hours != 0)
 	{
 		printf("Contract #%d:\n", index + 1);
 		printf("Hours: %d\n", worker.Contracts[index].Hours);

@@ -1,5 +1,5 @@
-typedef struct HourContract
+struct HourContract
 {
 	float HourValue;
 	int Hours;
-}HourContract;
+};
