@@ -1,6 +1,6 @@
 #include <string.h>
 
-struct Department
+typedef struct Department
 {
 	string Name;
-};
+}Department;
