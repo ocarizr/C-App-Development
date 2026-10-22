@@ -1,0 +1,37 @@
+# Out-of-source CMake builds
+/build/
+/build-*/
+/out/
+/CMakeUserPresets.json
+CMakeFiles/
+CMakeCache.txt
+Testing/
+cmake_install.cmake
+CTestTestfile.cmake
+compile_commands.json
+
+# Compiled output
+*.o
+*.obj
+*.exe
+*.gch
+*.pch
+*.a
+*.lib
+*.so
+*.so.*
+*.dll
+*.dylib
+*.pdb
+*.ilk
+*.exp
+*.gcda
+*.gcno
+*.gcov
+
+# Local editor and OS files
+.vs/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
