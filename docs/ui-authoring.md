@@ -222,7 +222,7 @@ de propriedades e comandos do ViewModel. Nunca use dados de produção nos teste
 
 Para reorganizar telas, editar rótulos ou compor layouts, altere somente XML.
 Para um novo controle, adicione seu tipo e atributos em `libs/ui/src/document.c`,
-estado em `ui_internal.h`, comportamento/layout/renderização em `render.c` e,
+estado em `ui_internal.h`, comportamento em `input.c`, layout/renderização em `render.c` e,
 se necessário, uma tecla em `terminal.c`. Escreva testes do parser e do comportamento
 em `libs/ui/tests`. O controle deve operar propriedades e comandos genéricos,
 sem incluir cabeçalhos do domínio ou do SQLite.

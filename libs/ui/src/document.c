@@ -1,4 +1,5 @@
 #include "ui_internal.h"
+
 #include <ctype.h>
 #include <expat.h>
 #include <stdlib.h>
@@ -13,6 +14,7 @@ typedef struct
     size_t capacity;
     bool failed;
 } Parser;
+
 static void fail(Parser *p, const char *message)
 {
     if (!p->failed)
@@ -23,6 +25,7 @@ static void fail(Parser *p, const char *message)
         XML_StopParser(p->xml, XML_FALSE);
     }
 }
+
 static bool copy_attribute(Parser *p, char *out, size_t size, const char *value)
 {
     if (strlen(value) >= size)
@@ -30,9 +33,11 @@ static bool copy_attribute(Parser *p, char *out, size_t size, const char *value)
         fail(p, "atributo excede o limite");
         return false;
     }
+
     memcpy(out, value, strlen(value) + 1);
     return true;
 }
+
 static int number(Parser *p, const char *value, int min, int max)
 {
     char *end;
@@ -42,18 +47,22 @@ static int number(Parser *p, const char *value, int min, int max)
         fail(p, "numero invalido");
         return min;
     }
+
     result = strtol(value, &end, 10);
     if (*end != '\0' || result < min || result > max)
     {
         fail(p, "numero fora dos limites");
         return min;
     }
+
     return (int)result;
 }
+
 static bool layout(Component t)
 {
     return t == C_VSTACK || t == C_HSTACK || t == C_GRID;
 }
+
 static void XMLCALL start(void *context, const char *name, const char **attributes)
 {
     static const char *const names[] = {
@@ -69,11 +78,13 @@ static void XMLCALL start(void *context, const char *name, const char **attribut
             type = i;
         }
     }
+
     if (type < 0 || p->depth == UI_DEPTH || p->doc->count == UI_NODES)
     {
         fail(p, "componente desconhecido ou limite de arvore excedido");
         return;
     }
+
     index = p->doc->count++;
     node = &p->doc->nodes[index];
     node->type = (Component)type;
@@ -93,8 +104,10 @@ static void XMLCALL start(void *context, const char *name, const char **attribut
         {
             link = &p->doc->nodes[*link].next;
         }
+
         *link = index;
     }
+
     p->stack[p->depth++] = index;
     for (int i = 0; attributes[i] != NULL && !p->failed; i += 2)
     {
@@ -149,6 +162,7 @@ static void XMLCALL start(void *context, const char *name, const char **attribut
         }
     }
 }
+
 static void XMLCALL end(void *context, const char *name)
 {
     Parser *p = context;
@@ -158,6 +172,7 @@ static void XMLCALL end(void *context, const char *name)
         --p->depth;
     }
 }
+
 static void XMLCALL characters(void *context, const char *value, int length)
 {
     Parser *p = context;
@@ -170,6 +185,7 @@ static void XMLCALL characters(void *context, const char *value, int length)
         }
     }
 }
+
 static void XMLCALL doctype(void *context, const char *name, const char *sysid, const char *pubid,
                             int subset)
 {
@@ -179,6 +195,7 @@ static void XMLCALL doctype(void *context, const char *name, const char *sysid, 
     (void)subset;
     fail(context, "DTD e entidades personalizadas nao sao permitidos");
 }
+
 static bool relative_source(const char *path)
 {
     const char *part = path;
@@ -186,6 +203,7 @@ static bool relative_source(const char *path)
     {
         return false;
     }
+
     for (const char *cursor = path;; ++cursor)
     {
         if (*cursor == '/' || *cursor == '\0')
@@ -196,6 +214,7 @@ static bool relative_source(const char *path)
             {
                 return false;
             }
+
             part = cursor + 1;
             if (*cursor == '\0')
             {
@@ -204,8 +223,11 @@ static bool relative_source(const char *path)
         }
     }
 }
+
 static int load_file(UiDocument *doc, const char *path, int depth, char *error, size_t capacity)
 {
+    /* The parser borrows doc and diagnostics. On failure ui_load discards the
+     * entire expanded tree; referenced files never publish partially valid UI. */
     Parser p = {0};
     FILE *file;
     char data[4096];
@@ -216,6 +238,7 @@ static int load_file(UiDocument *doc, const char *path, int depth, char *error, 
         snprintf(error, capacity, "nao foi possivel ler %s (limite de includes: 8)", path);
         return -1;
     }
+
     p.doc = doc;
     p.error = error;
     p.capacity = capacity;
@@ -227,6 +250,7 @@ static int load_file(UiDocument *doc, const char *path, int depth, char *error, 
         snprintf(error, capacity, "memoria insuficiente para XML");
         return -1;
     }
+
     XML_SetUserData(p.xml, &p);
     XML_SetElementHandler(p.xml, start, end);
     XML_SetCharacterDataHandler(p.xml, characters);
@@ -240,12 +264,14 @@ static int load_file(UiDocument *doc, const char *path, int depth, char *error, 
             fail(&p, "arquivo excede 64 KiB ou falha de leitura");
             break;
         }
+
         if (XML_Parse(p.xml, data, (int)count, count < sizeof(data)) == XML_STATUS_ERROR)
         {
             if (!p.failed)
             {
                 fail(&p, XML_ErrorString(XML_GetErrorCode(p.xml)));
             }
+
             break;
         }
     } while (count == sizeof(data));
@@ -258,6 +284,7 @@ static int load_file(UiDocument *doc, const char *path, int depth, char *error, 
         snprintf(error, capacity, "%s: %s", path, detail);
         return -1;
     }
+
     finish = doc->count;
     for (int i = begin; i < finish; ++i)
     {
@@ -272,6 +299,7 @@ static int load_file(UiDocument *doc, const char *path, int depth, char *error, 
             {
                 slash = backslash;
             }
+
             prefix = slash == NULL ? 0 : (size_t)(slash - path + 1);
             if (node->child != -1 || !relative_source(node->source) ||
                 prefix + strlen(node->source) >= sizeof(child_path))
@@ -280,6 +308,7 @@ static int load_file(UiDocument *doc, const char *path, int depth, char *error, 
                          "Tab/Include exige source relativo e nenhum filho inline");
                 return -1;
             }
+
             memcpy(child_path, path, prefix);
             memcpy(child_path + prefix, node->source, strlen(node->source) + 1);
             child = load_file(doc, child_path, depth + 1, error, capacity);
@@ -287,18 +316,22 @@ static int load_file(UiDocument *doc, const char *path, int depth, char *error, 
             {
                 return -1;
             }
+
             if (doc->nodes[child].type != (node->type == C_TAB ? C_WINDOW : C_FRAGMENT))
             {
                 snprintf(error, capacity,
                          "source deve ter raiz Window (Tab) ou Fragment (Include)");
                 return -1;
             }
+
             node->child = child;
             doc->nodes[child].parent = i;
         }
     }
+
     return p.root;
 }
+
 static bool validate(UiDocument *doc, char *error, size_t capacity)
 {
     for (int i = 0; i < doc->count; ++i)
@@ -317,6 +350,7 @@ static bool validate(UiDocument *doc, char *error, size_t capacity)
             snprintf(error, capacity, "hierarquia invalida no componente %d", i);
             return false;
         }
+
         if ((n->bind[0] != '\0' && mvvm_get(doc->model, n->bind) == NULL) ||
             (n->type == C_INPUT && !mvvm_writable(doc->model, n->bind)) ||
             (n->type == C_TABLE && n->bind[0] == '\0') ||
@@ -326,6 +360,7 @@ static bool validate(UiDocument *doc, char *error, size_t capacity)
             snprintf(error, capacity, "binding/comando invalido no componente %d (%s)", i, n->id);
             return false;
         }
+
         for (int j = 0; n->id[0] != '\0' && j < i; ++j)
         {
             if (strcmp(n->id, doc->nodes[j].id) == 0)
@@ -334,6 +369,7 @@ static bool validate(UiDocument *doc, char *error, size_t capacity)
                 return false;
             }
         }
+
         if (n->type == C_TABS)
         {
             if (doc->tabs != -1)
@@ -341,17 +377,21 @@ static bool validate(UiDocument *doc, char *error, size_t capacity)
                 snprintf(error, capacity, "exatamente um Tabs e obrigatorio");
                 return false;
             }
+
             doc->tabs = i;
             doc->active_tab = n->child;
         }
     }
+
     if (doc->tabs == -1)
     {
         snprintf(error, capacity, "Tabs ausente");
         return false;
     }
+
     return true;
 }
+
 UiDocument *ui_load(const char *path, Mvvm *model, char *error, size_t capacity)
 {
     UiDocument *doc;
@@ -359,6 +399,7 @@ UiDocument *ui_load(const char *path, Mvvm *model, char *error, size_t capacity)
     {
         return NULL;
     }
+
     *error = '\0';
     doc = calloc(1, sizeof(*doc));
     if (doc == NULL)
@@ -366,6 +407,7 @@ UiDocument *ui_load(const char *path, Mvvm *model, char *error, size_t capacity)
         snprintf(error, capacity, "memoria insuficiente");
         return NULL;
     }
+
     doc->model = model;
     doc->tabs = doc->focus = doc->active_tab = -1;
     doc->root = load_file(doc, path, 0, error, capacity);
@@ -376,12 +418,15 @@ UiDocument *ui_load(const char *path, Mvvm *model, char *error, size_t capacity)
         {
             snprintf(error, capacity, "raiz deve ser Application");
         }
+
         free(doc);
         return NULL;
     }
+
     ui_focus(doc, 1);
     return doc;
 }
+
 void ui_destroy(UiDocument *document)
 {
     free(document);

@@ -1,4 +1,4 @@
-add_library(workforce_ui STATIC src/document.c src/render.c src/terminal.c)
+add_library(workforce_ui STATIC src/document.c src/input.c src/render.c src/terminal.c)
 target_include_directories(workforce_ui PUBLIC include PRIVATE src)
 target_link_libraries(workforce_ui PUBLIC workforce_mvvm PRIVATE expat project_options)
 if(NOT WIN32)

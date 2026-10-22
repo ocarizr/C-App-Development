@@ -3,8 +3,51 @@
 
 #include <string.h>
 
+static void snapshot_adapters(void)
+{
+    const char *path = "workforce-snapshot-test.txt";
+    WorkerProfile profile = {"Ana", "Developer", "Engineering", 30, WORKER_SENIOR, 300000};
+    Team team = {0};
+    uint32_t id;
+    char text[2048];
+    CHECK(team_add(&team, &profile, &id) == WORKFORCE_OK);
+    Worker *worker = team_find(&team, id);
+    CHECK(worker != NULL);
+    CHECK(worker_add_contract(worker, (HourContract){2026, 10, 10, 2550, 0}) == WORKFORCE_OK);
+    CHECK(worker_set_salary(worker, (SalaryChange){2026, 11, 400000}) == WORKFORCE_OK);
+    FILE *file = test_file(path, "w+b");
+    CHECK(team_write_text(file, &team) == WORKFORCE_OK);
+    CHECK(worker_write_contracts(file, worker) == WORKFORCE_OK);
+    CHECK(worker_write_history(file, worker) == WORKFORCE_OK);
+    /* Borrowing the stream leaves it usable by the caller after every adapter. */
+    CHECK(fputs("still open\n", file) >= 0);
+    CHECK(fflush(file) == 0 && fseek(file, 0, SEEK_SET) == 0);
+    size_t length = fread(text, 1, sizeof(text) - 1, file);
+    text[length] = '\0';
+    CHECK(!ferror(file) && fclose(file) == 0);
+    CHECK(strstr(text, "1 | Ana | 30 | Developer | Engineering | Senior\n") != NULL);
+    CHECK(strstr(text, "1 | 2026-10 | 10 | 25.50\n") != NULL);
+    CHECK(strstr(text, "Salario inicial: 3000.00\n") != NULL);
+    CHECK(strstr(text, "2026-11 | 4000.00\n") != NULL);
+    CHECK(strstr(text, "still open\n") != NULL);
+    file = test_file(path, "rb");
+    CHECK(team_write_text(file, &team) == WORKFORCE_IO_ERROR);
+    CHECK(worker_write_contracts(file, worker) == WORKFORCE_IO_ERROR);
+    CHECK(worker_write_history(file, worker) == WORKFORCE_IO_ERROR);
+    CHECK(team_write_text(file, NULL) == WORKFORCE_INVALID);
+    CHECK(worker_write_contracts(file, NULL) == WORKFORCE_INVALID);
+    CHECK(worker_write_history(file, NULL) == WORKFORCE_INVALID);
+    CHECK(fclose(file) == 0);
+    CHECK(team_write_text(NULL, &team) == WORKFORCE_INVALID);
+    CHECK(worker_write_contracts(NULL, worker) == WORKFORCE_INVALID);
+    CHECK(worker_write_history(NULL, worker) == WORKFORCE_INVALID);
+    team_dispose(&team);
+    test_delete(path);
+}
+
 int main(void)
 {
+    snapshot_adapters();
     const char *path = "workforce-export-test.csv";
     Team team = {0};
     PayrollReport report = {0};

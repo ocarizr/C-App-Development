@@ -60,6 +60,7 @@ int main(void)
         CHECK(strcmp(output.database_path, base.database_path) == 0);
         CHECK(output.busy_timeout_ms == base.busy_timeout_ms && error[0] != '\0');
     }
+
     test_delete(path);
     CHECK(!config_load_file(path, &base, &output, error, sizeof(error)));
     CHECK(!config_load_file(NULL, &base, &output, error, sizeof(error)));

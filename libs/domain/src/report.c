@@ -1,4 +1,5 @@
 #include "workforce_report.h"
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -11,6 +12,7 @@ static int compare_rows(const void *left, const void *right)
     {
         return department;
     }
+
     return (a->worker_id > b->worker_id) - (a->worker_id < b->worker_id);
 }
 
@@ -18,6 +20,7 @@ WorkforceStatus report_build(const Team *team, int year, int month, const Report
                              PayrollReport *report)
 {
     PayrollReport candidate = {0};
+    /* Output ownership changes once, after filtering and every checked sum succeed. */
     WorkforceStatus status = WORKFORCE_OK;
     if (team == NULL || filter == NULL || report == NULL || year < 1 || year > 9999 || month < 1 ||
         month > 12 || memchr(filter->department, '\0', sizeof(filter->department)) == NULL ||
@@ -25,11 +28,13 @@ WorkforceStatus report_build(const Team *team, int year, int month, const Report
     {
         return WORKFORCE_INVALID;
     }
+
     if (team->count > SIZE_MAX / sizeof(*candidate.rows) ||
         team->count > SIZE_MAX / sizeof(*candidate.departments))
     {
         return WORKFORCE_OVERFLOW;
     }
+
     candidate.year = year;
     candidate.month = month;
     candidate.filter = *filter;
@@ -43,6 +48,7 @@ WorkforceStatus report_build(const Team *team, int year, int month, const Report
             return WORKFORCE_NO_MEMORY;
         }
     }
+
     for (size_t i = 0; i < team->count; ++i)
     {
         const Worker *worker = &team->workers[i];
@@ -53,6 +59,7 @@ WorkforceStatus report_build(const Team *team, int year, int month, const Report
         {
             continue;
         }
+
         row = &candidate.rows[candidate.count];
         row->worker_id = worker->id;
         row->profile = worker->profile;
@@ -61,26 +68,31 @@ WorkforceStatus report_build(const Team *team, int year, int month, const Report
         {
             status = worker_income(worker, year, month, &row->total_cents);
         }
+
         if (status != WORKFORCE_OK || candidate.total_cents > INT64_MAX - row->total_cents)
         {
             status = status == WORKFORCE_OK ? WORKFORCE_OVERFLOW : status;
             break;
         }
+
         row->contracts_cents = row->total_cents - row->salary_cents;
         candidate.salary_cents += row->salary_cents;
         candidate.contracts_cents += row->contracts_cents;
         candidate.total_cents += row->total_cents;
         ++candidate.count;
     }
+
     if (status != WORKFORCE_OK)
     {
         report_dispose(&candidate);
         return status;
     }
+
     if (candidate.count > 1)
     {
         qsort(candidate.rows, candidate.count, sizeof(*candidate.rows), compare_rows);
     }
+
     for (size_t i = 0; i < candidate.count; ++i)
     {
         const ReportRow *row = &candidate.rows[i];
@@ -96,12 +108,14 @@ WorkforceStatus report_build(const Team *team, int year, int month, const Report
         {
             department = &candidate.departments[candidate.department_count - 1];
         }
+
         ++department->worker_count;
         /* Each subtotal is bounded by the checked nonnegative grand total. */
         department->salary_cents += row->salary_cents;
         department->contracts_cents += row->contracts_cents;
         department->total_cents += row->total_cents;
     }
+
     *report = candidate;
     return WORKFORCE_OK;
 }

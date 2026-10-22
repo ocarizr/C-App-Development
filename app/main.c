@@ -1,6 +1,7 @@
 #include "workforce_application.h"
 #include "workforce_config.h"
 #include "workforce_ui.h"
+
 #include <stdlib.h>
 #include <string.h>
 #ifdef _WIN32
@@ -16,6 +17,7 @@ static bool assets(const char *executable, char *path, size_t capacity)
     {
         return false;
     }
+
     executable = located;
 #else
     /* argv[0] may be only a command name when launched through PATH. */
@@ -30,12 +32,15 @@ static bool assets(const char *executable, char *path, size_t capacity)
             size_t length = end == NULL ? strlen(entry) : (size_t)(end - entry);
             if (length + strlen(executable) + 2 < sizeof(located))
             {
-                memcpy(located, entry, length);
-                if (length > 0)
+                /* PATH entries are slices, not terminated strings. Build the
+                 * complete candidate in one bounded, terminating operation. */
+                int written = snprintf(located, sizeof(located), "%.*s%s%s", (int)length, entry,
+                                       length > 0 ? "/" : "", executable);
+                if (written < 0 || (size_t)written >= sizeof(located))
                 {
-                    located[length++] = '/';
+                    return false;
                 }
-                memcpy(located + length, executable, strlen(executable) + 1);
+
                 FILE *file = fopen(located, "rb");
                 if (file != NULL)
                 {
@@ -45,10 +50,12 @@ static bool assets(const char *executable, char *path, size_t capacity)
                     break;
                 }
             }
+
             if (end == NULL)
             {
                 break;
             }
+
             entry = end + 1;
         } while (*entry != '\0');
         if (!found)
@@ -62,15 +69,18 @@ static bool assets(const char *executable, char *path, size_t capacity)
     {
         slash = backslash;
     }
+
     size_t prefix = slash == NULL ? 0 : (size_t)(slash - executable + 1);
     if (prefix + sizeof("ui/application.xml") > capacity)
     {
         return false;
     }
+
     memcpy(path, executable, prefix);
     memcpy(path + prefix, "ui/application.xml", sizeof("ui/application.xml"));
     return true;
 }
+
 int main(int argc, char **argv)
 {
     AppConfig config;
@@ -90,6 +100,7 @@ int main(int argc, char **argv)
              "Tab: foco; Enter: acao; F1/F2: abas; Esc: sair. Scripts: docs/ui-authoring.md.");
         return EXIT_SUCCESS;
     }
+
     for (int i = 1; i < argc; i += 2)
     {
         if (i + 1 >= argc)
@@ -97,6 +108,7 @@ int main(int argc, char **argv)
             fputs("Argumentos invalidos. Use workforce --help.\n", stderr);
             return EXIT_FAILURE;
         }
+
         if (strcmp(argv[i], "--config") == 0)
         {
             configured = true;
@@ -120,11 +132,13 @@ int main(int argc, char **argv)
             return EXIT_FAILURE;
         }
     }
+
     if (!configured && !config_load_file("app.yaml", &config, &config, error, sizeof(error)))
     {
         fprintf(stderr, "Erro de configuracao (app.yaml): %s\n", error);
         return EXIT_FAILURE;
     }
+
     if (ui_path == NULL)
     {
         if (!assets(argv[0], default_ui, sizeof(default_ui)))
@@ -132,14 +146,17 @@ int main(int argc, char **argv)
             fputs("Nao foi possivel localizar a UI. Use --ui application.xml.\n", stderr);
             return EXIT_FAILURE;
         }
+
         ui_path = default_ui;
     }
+
     options = (StoreOptions){config.database_path, config.busy_timeout_ms};
     if (store_open(&options, &store, &created, error) != WORKFORCE_OK)
     {
         fprintf(stderr, "Nao foi possivel abrir o banco de dados: %s\n", error);
         return EXIT_FAILURE;
     }
+
     vm = workforce_vm_create(store);
     if (vm == NULL)
     {
@@ -147,6 +164,7 @@ int main(int argc, char **argv)
         store_close(store);
         return EXIT_FAILURE;
     }
+
     const char *notice = created ? "O banco de dados nao existia; um novo foi criado."
                                  : "Conexao com o banco de dados realizada com sucesso.";
     printf("%s %s\n", notice, config.database_path);
@@ -159,6 +177,7 @@ int main(int argc, char **argv)
         store_close(store);
         return EXIT_FAILURE;
     }
+
     if (script_path != NULL)
     {
         FILE *script = fopen(script_path, "rb");
@@ -177,6 +196,7 @@ int main(int argc, char **argv)
     {
         result = ui_run(ui);
     }
+
     ui_destroy(ui);
     workforce_vm_destroy(vm);
     store_close(store);

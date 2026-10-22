@@ -2,6 +2,7 @@
 #define WORKFORCE_APPLICATION_H
 #include "workforce_mvvm.h"
 #include "workforce_store.h"
+
 /* Owns bindings and commands, borrows store until destruction. No terminal/XML dependency.
  * Reads acquire fresh repository snapshots; command failures publish a status.
  * A failed view refresh after a successful write is reported explicitly. */

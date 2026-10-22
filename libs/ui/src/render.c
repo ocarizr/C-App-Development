@@ -1,222 +1,14 @@
 #include "ui_internal.h"
+
 #include <stdlib.h>
 #include <string.h>
 
-bool ui_visible(const UiDocument *doc, int index)
-{
-    for (int i = index; i != -1; i = doc->nodes[i].parent)
-    {
-        if (doc->nodes[i].type == C_TAB && i != doc->active_tab)
-        {
-            return false;
-        }
-    }
-    return true;
-}
-static void collect(const UiDocument *doc, int index, int *items, int *count)
-{
-    const UiNode *n = &doc->nodes[index];
-    if (!ui_visible(doc, index))
-    {
-        return;
-    }
-    if (n->type == C_INPUT || n->type == C_BUTTON || n->type == C_TABLE || n->type == C_TABS)
-    {
-        items[(*count)++] = index;
-    }
-    for (int child = n->child; child != -1; child = doc->nodes[child].next)
-    {
-        collect(doc, child, items, count);
-    }
-}
-void ui_focus(UiDocument *doc, int direction)
-{
-    int items[UI_NODES], count = 0, position = -1;
-    collect(doc, doc->root, items, &count);
-    for (int i = 0; i < count; ++i)
-    {
-        if (items[i] == doc->focus)
-        {
-            position = i;
-        }
-    }
-    if (count > 0)
-    {
-        doc->focus = items[(position + direction + count) % count];
-    }
-}
-bool ui_select_tab(UiDocument *doc, const char *id)
-{
-    if (doc == NULL || id == NULL)
-    {
-        return false;
-    }
-    for (int i = doc->nodes[doc->tabs].child; i != -1; i = doc->nodes[i].next)
-    {
-        if (strcmp(doc->nodes[i].id, id) == 0)
-        {
-            doc->active_tab = i;
-            doc->focus = doc->tabs;
-            doc->scroll = 0;
-            return true;
-        }
-    }
-    return false;
-}
-static void change_tab(UiDocument *doc, bool forward)
-{
-    int first = doc->nodes[doc->tabs].child, last = first, previous = -1;
-    for (int i = first; i != -1; i = doc->nodes[i].next)
-    {
-        if (doc->nodes[i].next == doc->active_tab)
-        {
-            previous = i;
-        }
-        last = i;
-    }
-    int next = doc->nodes[doc->active_tab].next;
-    doc->active_tab = forward ? (next == -1 ? first : next) : (previous == -1 ? last : previous);
-    doc->focus = doc->tabs;
-    doc->scroll = 0;
-}
-bool ui_key(UiDocument *doc, UiKey key)
-{
-    UiNode *n;
-    if (doc == NULL)
-    {
-        return false;
-    }
-    n = doc->focus < 0 ? NULL : &doc->nodes[doc->focus];
-    if (key == UI_NEXT || key == UI_PREVIOUS)
-    {
-        ui_focus(doc, key == UI_NEXT ? 1 : -1);
-    }
-    else if (key == UI_TAB_NEXT || key == UI_TAB_PREVIOUS ||
-             (n != NULL && n->type == C_TABS && (key == UI_LEFT || key == UI_RIGHT)))
-    {
-        change_tab(doc, key == UI_TAB_NEXT || key == UI_RIGHT);
-    }
-    else if (n != NULL && key == UI_ACTIVATE)
-    {
-        if (n->type == C_BUTTON)
-        {
-            if (strcmp(n->command, "quit") == 0)
-            {
-                doc->quit = true;
-            }
-            else
-            {
-                /* Validation errors are displayed through the VM status binding. */
-                (void)mvvm_execute(doc->model, n->command);
-            }
-        }
-        else if (n->type == C_TABS)
-        {
-            change_tab(doc, true);
-        }
-        else
-        {
-            ui_focus(doc, 1);
-        }
-    }
-    else if (n != NULL && n->type == C_INPUT && (key == UI_BACKSPACE || key == UI_CLEAR))
-    {
-        const char *old = mvvm_get(doc->model, n->bind);
-        char text[1024];
-        size_t length = strlen(old);
-        if (length >= sizeof(text))
-        {
-            return false;
-        }
-        memcpy(text, old, length + 1);
-        if (key == UI_CLEAR)
-        {
-            length = 0;
-        }
-        else if (length > 0)
-        {
-            --length;
-            while (length > 0 && ((unsigned char)text[length] & 0xc0) == 0x80)
-            {
-                --length;
-            }
-        }
-        text[length] = '\0';
-        return mvvm_set(doc->model, n->bind, text);
-    }
-    else if (n != NULL && n->type == C_TABLE)
-    {
-        const char *text = mvvm_get(doc->model, n->bind);
-        int lines = 1;
-        for (const char *p = text; *p != '\0'; ++p)
-        {
-            lines += *p == '\n';
-        }
-        if (key == UI_PAGE_DOWN && n->row_offset < lines - 1)
-        {
-            n->row_offset += n->h > 2 ? n->h - 2 : 1;
-            if (n->row_offset >= lines)
-            {
-                n->row_offset = lines - 1;
-            }
-        }
-        else if (key == UI_PAGE_UP)
-        {
-            n->row_offset -= n->h > 2 ? n->h - 2 : 1;
-            if (n->row_offset < 0)
-            {
-                n->row_offset = 0;
-            }
-        }
-        else if (key == UI_RIGHT && n->column_offset < 1024)
-        {
-            n->column_offset += 8;
-        }
-        else if (key == UI_LEFT && n->column_offset > 0)
-        {
-            n->column_offset -= 8;
-        }
-    }
-    return true;
-}
-bool ui_text(UiDocument *doc, const char *utf8)
-{
-    char text[1024];
-    UiNode *n;
-    const char *old;
-    size_t length, extra;
-    if (doc == NULL || utf8 == NULL || doc->focus < 0)
-    {
-        return false;
-    }
-    n = &doc->nodes[doc->focus];
-    if (n->type != C_INPUT)
-    {
-        return false;
-    }
-    for (const unsigned char *p = (const unsigned char *)utf8; *p != 0; ++p)
-    {
-        if (*p < 32 || *p == 127)
-        {
-            return false;
-        }
-    }
-    old = mvvm_get(doc->model, n->bind);
-    length = strlen(old);
-    extra = strlen(utf8);
-    if (length + extra > (size_t)n->max_length || length + extra >= sizeof(text))
-    {
-        return false;
-    }
-    memcpy(text, old, length);
-    memcpy(text + length, utf8, extra + 1);
-    return mvvm_set(doc->model, n->bind, text);
-}
-static int minimum(int a, int b)
+static int min_int(int a, int b)
 {
     return a < b ? a : b;
 }
-static int natural(UiDocument *doc, int index)
+
+static int measure_height(UiDocument *doc, int index)
 {
     UiNode *n = &doc->nodes[index];
     int height = 0, count = 0, row = 0;
@@ -224,18 +16,22 @@ static int natural(UiDocument *doc, int index)
     {
         return 0;
     }
+
     if (n->type == C_STATUS)
     {
         return 0;
     }
+
     if (n->height > 0)
     {
         return n->height;
     }
+
     if (n->type >= C_LABEL)
     {
         return n->type == C_INPUT ? 2 : n->type == C_TABLE ? 10 : 1;
     }
+
     for (int child = n->child; child != -1; child = doc->nodes[child].next)
     {
         int h;
@@ -243,7 +39,8 @@ static int natural(UiDocument *doc, int index)
         {
             continue;
         }
-        h = natural(doc, child);
+
+        h = measure_height(doc, child);
         if (n->type == C_HSTACK)
         {
             height = height > h ? height : h;
@@ -255,39 +52,48 @@ static int natural(UiDocument *doc, int index)
                 height += row + n->gap;
                 row = 0;
             }
+
             row = row > h ? row : h;
         }
         else
         {
             height += h + (count > 0 ? n->gap : 0);
         }
+
         ++count;
     }
+
     height += row + (n->type == C_TABS || n->type == C_WINDOW || n->type == C_APPLICATION ? 2 : 0);
-    return minimum(height, 4096);
+    return min_int(height, 4096);
 }
-static void arrange(UiDocument *doc, int index, int x, int y, int width, int available)
+
+static void arrange_nodes(UiDocument *doc, int index, int x, int y, int width, int available)
 {
+    /* Geometry is measured in terminal cells. Child rectangles stay inside the
+     * space offered by their parent; only the viewport applies screen scrolling. */
     UiNode *n = &doc->nodes[index];
     int children[UI_NODES] = {0}, count = 0, cursor = 0;
     if (width < 0)
     {
         width = 0;
     }
+
     n->x = x;
     n->y = y;
-    n->w = minimum(n->width > 0 ? n->width : width, width);
-    n->h = minimum(natural(doc, index), available);
+    n->w = min_int(n->width > 0 ? n->width : width, width);
+    n->h = min_int(measure_height(doc, index), available);
     if (n->h < 0)
     {
         n->h = 0;
     }
+
     available = n->h;
     if (n->type == C_TABS || n->type == C_WINDOW || n->type == C_APPLICATION)
     {
         y += 2;
         available -= 2;
     }
+
     for (int i = n->child; i != -1; i = doc->nodes[i].next)
     {
         if (ui_visible(doc, i))
@@ -295,6 +101,7 @@ static void arrange(UiDocument *doc, int index, int x, int y, int width, int ava
             children[count++] = i;
         }
     }
+
     for (int i = 0; i < count; ++i)
     {
         int child = children[i], cell = n->w;
@@ -306,16 +113,18 @@ static void arrange(UiDocument *doc, int index, int x, int y, int width, int ava
             {
                 cell = 1;
             }
+
             int column = i % columns;
             int row_height = 0;
-            for (int j = i - column; j < minimum(i - column + columns, count); ++j)
+            for (int j = i - column; j < min_int(i - column + columns, count); ++j)
             {
-                int h = natural(doc, children[j]);
+                int h = measure_height(doc, children[j]);
                 row_height = row_height > h ? row_height : h;
             }
+
             int offset = column * (cell + n->gap);
-            int child_width = minimum(cell, n->w - offset);
-            arrange(doc, child, x + offset, y + cursor, child_width, available - cursor);
+            int child_width = min_int(cell, n->w - offset);
+            arrange_nodes(doc, child, x + offset, y + cursor, child_width, available - cursor);
             if (column == columns - 1 || i == count - 1)
             {
                 cursor += row_height + n->gap;
@@ -323,19 +132,22 @@ static void arrange(UiDocument *doc, int index, int x, int y, int width, int ava
         }
         else
         {
-            arrange(doc, child, x, y + cursor, cell, available - cursor);
-            cursor += natural(doc, child) + n->gap;
+            arrange_nodes(doc, child, x, y + cursor, cell, available - cursor);
+            cursor += measure_height(doc, child) + n->gap;
         }
     }
 }
+
 typedef struct
 {
     uint32_t character;
     bool focused;
 } Cell;
-/* Width-one Unicode scalar values; control characters never reach the terminal. */
-static uint32_t decode(const char **text)
+
+static uint32_t decode_scalar(const char **text)
 {
+    /* Invalid bytes and control scalars become printable placeholders so stored
+     * text can never inject ANSI commands into the terminal output. */
     const unsigned char *p = (const unsigned char *)*text;
     uint32_t value = *p++;
     int extra = 0;
@@ -358,6 +170,7 @@ static uint32_t decode(const char **text)
     {
         value = '?';
     }
+
     for (int i = 0; i < extra; ++i)
     {
         if ((*p & 0xc0) != 0x80)
@@ -365,47 +178,56 @@ static uint32_t decode(const char **text)
             value = '?';
             break;
         }
+
         value = (value << 6) | (*p++ & 0x3f);
     }
+
     *text = (const char *)p;
     if (value < 32 || (value >= 127 && value < 160) || value > 0x10ffff ||
         (value >= 0xd800 && value <= 0xdfff))
     {
         return '?';
     }
+
     return value;
 }
-static void put(Cell *cells, int width, int height, int x, int y, int limit, const char *text,
-                bool focus, int skip)
+
+static void draw_text(Cell *cells, int width, int height, int x, int y, int limit, const char *text,
+                      bool focus, int skip)
 {
     int column = 0;
     if (y < 0 || y >= height)
     {
         return;
     }
+
     while (*text != '\0' && *text != '\n' && column < skip + limit)
     {
-        uint32_t character = decode(&text);
+        uint32_t character = decode_scalar(&text);
         if (column >= skip && x + column - skip >= 0 && x + column - skip < width)
         {
             Cell *cell = &cells[y * width + x + column - skip];
             cell->character = character;
             cell->focused = focus;
         }
+
         ++column;
     }
 }
+
 static int text_width(const char *text)
 {
     int width = 0;
     while (*text != '\0')
     {
-        (void)decode(&text);
+        (void)decode_scalar(&text);
         ++width;
     }
+
     return width;
 }
-static void emit(FILE *out, uint32_t c)
+
+static void write_scalar(FILE *out, uint32_t c)
 {
     if (c < 128)
     {
@@ -430,6 +252,7 @@ static void emit(FILE *out, uint32_t c)
         fputc((int)(0x80 | (c & 63)), out);
     }
 }
+
 bool ui_render(UiDocument *doc, FILE *output, int width, int height, bool plain)
 {
     Cell *cells;
@@ -438,11 +261,13 @@ bool ui_render(UiDocument *doc, FILE *output, int width, int height, bool plain)
     {
         return false;
     }
+
     cells = calloc((size_t)width * (size_t)height, sizeof(*cells));
     if (cells == NULL)
     {
         return false;
     }
+
     for (int i = 0; i < doc->count; ++i)
     {
         if (doc->nodes[i].type == C_STATUS && ui_visible(doc, i))
@@ -450,30 +275,35 @@ bool ui_render(UiDocument *doc, FILE *output, int width, int height, bool plain)
             ++bars;
         }
     }
-    int viewport = height - minimum(bars, height - 1);
+
+    int viewport = height - min_int(bars, height - 1);
     if (doc->revision != mvvm_revision(doc->model))
     {
         for (int i = 0; i < doc->count; ++i)
         {
             doc->nodes[i].row_offset = 0;
         }
+
         doc->revision = mvvm_revision(doc->model);
     }
-    arrange(doc, doc->root, 0, 0, width, 4096);
+
+    arrange_nodes(doc, doc->root, 0, 0, width, 4096);
     if (doc->focus >= 0)
     {
         UiNode *focus = &doc->nodes[doc->focus];
         int focus_height = focus->type == C_TABS ? 1 : focus->h;
-        int bottom = focus->y + minimum(focus_height, viewport - 1) - 1;
+        int bottom = focus->y + min_int(focus_height, viewport - 1) - 1;
         if (focus->y < doc->scroll)
         {
             doc->scroll = focus->y;
         }
+
         if (bottom >= doc->scroll + viewport)
         {
             doc->scroll = bottom - viewport + 1;
         }
     }
+
     for (int i = 0; i < doc->count; ++i)
     {
         UiNode *n = &doc->nodes[i];
@@ -484,15 +314,18 @@ bool ui_render(UiDocument *doc, FILE *output, int width, int height, bool plain)
         {
             continue;
         }
+
         if (n->type == C_STATUS)
         {
-            put(cells, width, height, 0, viewport + bar++, width, text, false, 0);
+            draw_text(cells, width, height, 0, viewport + bar++, width, text, false, 0);
             continue;
         }
+
         if (n->h <= 0)
         {
             continue;
         }
+
         if (n->type == C_TABS)
         {
             int x = n->x;
@@ -501,7 +334,7 @@ bool ui_render(UiDocument *doc, FILE *output, int width, int height, bool plain)
                 char title[300];
                 snprintf(title, sizeof(title), "%c %s %c", t == doc->active_tab ? '[' : ' ',
                          doc->nodes[t].text, t == doc->active_tab ? ']' : ' ');
-                put(cells, width, viewport, x, y, n->w - (x - n->x), title, focused, 0);
+                draw_text(cells, width, viewport, x, y, n->w - (x - n->x), title, focused, 0);
                 x += text_width(title) + 1;
             }
         }
@@ -510,33 +343,35 @@ bool ui_render(UiDocument *doc, FILE *output, int width, int height, bool plain)
             char value[1400];
             if (n->type == C_INPUT)
             {
-                put(cells, width, viewport, n->x, y, n->w, n->text, false, 0);
+                draw_text(cells, width, viewport, n->x, y, n->w, n->text, false, 0);
                 snprintf(value, sizeof(value), "[%s%s]", focused ? "> " : "", text);
                 /* Keep the end of a long input visible while editing. */
                 int skip = text_width(value) > n->w ? text_width(value) - n->w : 0;
                 if (n->h >= 2)
                 {
-                    put(cells, width, viewport, n->x, y + 1, n->w, value, focused, skip);
+                    draw_text(cells, width, viewport, n->x, y + 1, n->w, value, focused, skip);
                 }
             }
             else
             {
                 snprintf(value, sizeof(value), "%s[ %s ]", focused ? "> " : "", n->text);
-                put(cells, width, viewport, n->x, y, n->w, value, focused, 0);
+                draw_text(cells, width, viewport, n->x, y, n->w, value, focused, 0);
             }
         }
         else if (n->type == C_TABLE)
         {
-            put(cells, width, viewport, n->x, y, n->w, n->text, focused, 0);
+            draw_text(cells, width, viewport, n->x, y, n->w, n->text, focused, 0);
             const char *row = text;
             for (int line = 0; line < n->row_offset && *row != '\0'; ++line)
             {
                 const char *next = strchr(row, '\n');
                 row = next == NULL ? row + strlen(row) : next + 1;
             }
+
             for (int line = 1; line < n->h && *row != '\0'; ++line)
             {
-                put(cells, width, viewport, n->x, y + line, n->w, row, false, n->column_offset);
+                draw_text(cells, width, viewport, n->x, y + line, n->w, row, false,
+                          n->column_offset);
                 const char *next = strchr(row, '\n');
                 row = next == NULL ? row + strlen(row) : next + 1;
             }
@@ -550,13 +385,15 @@ bool ui_render(UiDocument *doc, FILE *output, int width, int height, bool plain)
         }
         else if (n->type == C_LABEL || n->type == C_WINDOW || n->type == C_APPLICATION)
         {
-            put(cells, width, viewport, n->x, y, n->w, text, false, 0);
+            draw_text(cells, width, viewport, n->x, y, n->w, text, false, 0);
         }
     }
+
     if (!plain)
     {
         fputs("\033[H\033[0m", output);
     }
+
     bool style = false;
     for (int y = 0; y < height; ++y)
     {
@@ -568,17 +405,21 @@ bool ui_render(UiDocument *doc, FILE *output, int width, int height, bool plain)
                 fputs(cell.focused ? "\033[30;106m" : "\033[0m", output);
                 style = cell.focused;
             }
-            emit(output, cell.character == 0 ? ' ' : cell.character);
+
+            write_scalar(output, cell.character == 0 ? ' ' : cell.character);
         }
+
         if (y + 1 < height)
         {
             fputs(plain ? "\n" : "\r\n", output);
         }
     }
+
     if (!plain)
     {
         fputs("\033[0m", output);
     }
+
     free(cells);
     return fflush(output) == 0 && !ferror(output);
 }

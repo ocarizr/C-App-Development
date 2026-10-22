@@ -22,7 +22,8 @@ Infraestrutura, configuração, MVVM e UI são módulos técnicos; `libs/domain`
 que recebem seu ponteiro protegem os invariantes. Cargo e departamento são
 valores textuais do perfil. `Team` representa uma coleção para consultas.
 `report_build` seleciona, calcula e agrega; `workforce_export` recebe esse
-snapshot e formata texto/CSV. SQLite fica privado em `libs/infra`.
+snapshot e formata texto/CSV, incluindo listas de equipe, contratos e vigências.
+SQLite fica privado em `libs/infra`.
 
 ## MVVM e apresentação
 
@@ -40,7 +41,8 @@ textuais em parâmetros tipados e coordena o repositório e o core. Validação 
 agregado, vigência e overflow permanecem no domínio. Cada comando busca dados
 atuais do banco; o ViewModel não mantém uma cópia editável do agregado. Perfil
 é salvo sobre um snapshot novo, preservando salário original e histórico.
-Listas de apresentação são somente leitura, limitadas na prévia. Relatórios
+Listas de apresentação são formatadas por `workforce_export` e são somente leitura,
+limitadas na prévia. O ViewModel publica textos em bindings sem definir seu layout. Relatórios
 reutilizam `report_build` e `report_write_text`; exportação usa `report_export_csv`.
 Uma escrita invalida o relatório exibido. Se a escrita terminar mas a atualização
 visual falhar, o status informa que a operação concluiu e a visualização falhou.
@@ -51,6 +53,12 @@ terminal, trata foco/edição e renderiza ANSI. A View lê propriedades a cada r
 e escreve campos editáveis; botões executam comandos. Recursos de aplicação
 (abas, rótulos, formulários, layouts e ações) ficam em XML. O motor não inclui
 headers de negócio ou SQLite. [Guia de autoria](ui-authoring.md).
+
+Dentro da UI, `document.c` carrega e valida recursos, `input.c` trata foco,
+edição e comandos de entrada, `render.c` mede/distribui/desenha componentes e
+`terminal.c` adapta o console do sistema operacional. Esses arquivos compartilham
+somente a árvore privada e o contrato de bindings, mantendo eventos independentes
+do formato de saída. O domínio permanece independente desses adaptadores.
 
 O backend Windows usa o console nativo para entrada e ANSI para saída. O backend
 POSIX usa termios, poll e ANSI. O adaptador de scripts permite exercitar o mesmo

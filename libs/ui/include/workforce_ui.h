@@ -1,12 +1,14 @@
 #ifndef WORKFORCE_UI_H
 #define WORKFORCE_UI_H
 #include "workforce_mvvm.h"
+
 #include <stdbool.h>
 #include <stdio.h>
 
 /* A document owns the expanded XML component tree and borrows its model.
  * Load validates the complete tree before exposing it. UI never owns business data. */
 typedef struct UiDocument UiDocument;
+
 typedef enum
 {
     UI_NEXT,
@@ -21,6 +23,7 @@ typedef enum
     UI_LEFT,
     UI_RIGHT
 } UiKey;
+
 UiDocument *ui_load(const char *path, Mvvm *model, char *error, size_t capacity);
 void ui_destroy(UiDocument *document);
 bool ui_key(UiDocument *document, UiKey key);

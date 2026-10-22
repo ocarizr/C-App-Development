@@ -1,3 +1,6 @@
+# clang-analyzer-* includes unix.Malloc (leaks/double-free/use-after-free),
+# unix.MallocSizeof, unix.MismatchedDeallocator, core.NullDereference and uninitialized.*.
+# Keep the analyzer group enabled alongside the allocation-specific bugprone checks.
 Checks: >-
   -*,
   clang-analyzer-*,
@@ -7,6 +10,12 @@ Checks: >-
   bugprone-suspicious-semicolon,
   bugprone-misplaced-widening-cast,
   bugprone-narrowing-conversions,
+  bugprone-misplaced-operator-in-strlen-in-alloc,
+  bugprone-misplaced-pointer-arithmetic-in-alloc,
+  bugprone-suspicious-realloc-usage,
+  bugprone-suspicious-memory-comparison,
+  bugprone-not-null-terminated-result,
+  bugprone-undefined-memory-manipulation,
   readability-braces-around-statements
 WarningsAsErrors: '*'
 HeaderFilterRegex: '(^|[/\\])(app|libs|tests)[/\\]'

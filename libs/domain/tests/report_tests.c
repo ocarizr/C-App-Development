@@ -1,5 +1,6 @@
 #include "test.h"
 #include "workforce_report.h"
+
 #include <string.h>
 
 static WorkerProfile profile(const char *name, const char *department, WorkerLevel level)

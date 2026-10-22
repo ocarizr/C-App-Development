@@ -1,11 +1,13 @@
 #include "test.h"
 #include "workforce_application.h"
+
 #include <string.h>
 
 static void set(Mvvm *m, const char *name, const char *value)
 {
     CHECK(mvvm_set(m, name, value));
 }
+
 int main(void)
 {
     StoreOptions options = {":memory:", 0};

@@ -33,3 +33,7 @@ jobs:
           test "${#files[@]}" -gt 0
           clang-format-18 --version
           clang-format-18 --dry-run --Werror "${files[@]}"
+      - name: Check block and include spacing
+        run: |
+          python3 scripts/check_spacing.py --self-test
+          python3 scripts/check_spacing.py

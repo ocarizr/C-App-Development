@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#define MVVM_VALUE_MAX 65535
+
 /* Opaque, owned property/command registry. It borrows command contexts.
  * Values are UTF-8 strings, at most 65535 bytes. No expression evaluation.
  * All APIs are single-threaded. Returned values expire on the next write. */
