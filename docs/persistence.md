@@ -7,7 +7,8 @@
 | `workforce_domain` | Structs, validação, contratos e remuneração | Biblioteca C padrão |
 | `workforce_config` | Arquivos YAML e sobreposição tipada | `workforce_yaml` (libyaml) |
 | `workforce_infra` | Conexão, esquema, consultas e gravações | `workforce_domain`, `workforce_sqlite` |
-| `workforce_console` | Menu e apresentação atual | `workforce_infra` |
+| `workforce_console` | Menu e apresentação atual | `workforce_infra`, `workforce_export` |
+| `workforce_export` | Apresentação de relatórios em texto/CSV | `workforce_domain` |
 | `workforce` | Inicialização, configuração e composição | Console e configuração |
 
 Todos os targets de biblioteca são declarados explicitamente como `STATIC`,
@@ -61,8 +62,10 @@ Tabelas `STRICT`, `NOT NULL` e `CHECK` preservam os tipos e limites básicos.
 Contratos e vigências têm chaves estrangeiras com exclusão em cascata. O índice
 por funcionário/ano/mês atende à associação de contratos. IDs de funcionários
 mantêm o limite público `uint32_t` e não são reutilizados após exclusão, inclusive
-depois de reiniciar. A interface ainda exibe contratos por posição ordenada por
-ID; seus números visíveis podem mudar após uma remoção.
+depois de reiniciar. IDs de contratos também são persistentes e agora aparecem
+no modelo e na interface. Edição e remoção usam o ID do funcionário e do contrato,
+sem offsets ou posições de listas. Não há alteração de esquema nesta etapa:
+`contracts.id` já existia nas versões 1 e 2.
 
 A primeira abertura de um banco vazio cria o esquema dentro de uma transação.
 `PRAGMA application_id=1464226371` e `user_version=2` identificam o formato atual.
@@ -105,6 +108,27 @@ constraints ou triggers não geram sucesso nem gravam parcialmente.
 O histórico informa os salários vigentes, com correções editáveis. Não armazena
 versões antigas de nomes/cargos ou um log imutável de cada correção salarial.
 Não foi adicionada uma UI visual nesta etapa.
+
+## Contratos e relatórios
+
+`worker_update_contract` preserva o ID e verifica os novos valores e a soma do mês
+de destino antes de alterar o agregado. `store_update_contract` aplica essa regra
+dentro de `BEGIN IMMEDIATE` e grava com `WHERE worker_id=? AND id=?`. Exclusões
+usam o mesmo par de IDs. O SQLite atribui os IDs novos e o adaptador devolve o ID
+somente após o commit. Os snapshots preservam os IDs reais, inclusive os de bancos
+anteriores.
+
+O repositório fornece um snapshot consistente da equipe ao core. `report_build`
+aplica os filtros de departamento/nível sobre o perfil atual, calcula os valores
+vigentes no ano/mês e gera linhas e subtotais independentes da memória da equipe.
+O total é validado antes de apresentar ou exportar qualquer resultado. Os filtros
+são aplicados antes das somas: registros excluídos não entram nos totais.
+
+`workforce_export` recebe esse resultado pronto. Os adaptadores de texto e CSV não
+dependem de configuração ou SQLite. A exportação abre o arquivo em modo exclusivo
+de criação, verifica erros de escrita/fechamento e tenta remover um arquivo parcial
+em caso de falha. Nunca substitui um arquivo existente. Os testes verificam CSV
+com vírgulas, aspas, quebras de linha e textos semelhantes a fórmulas.
 
 ## Dependências e build sem rede
 

@@ -61,12 +61,14 @@ static void test_persistent_edits(void)
     WorkerProfile data = profile();
     uint32_t id;
     Worker worker = {0};
+    int64_t contract_id;
     Team team = {0};
     sqlite3 *raw = NULL;
     delete_database();
     store = open_store();
     CHECK(store_add_worker(store, &data, &id) == WORKFORCE_OK);
-    CHECK(store_add_contract(store, id, (HourContract){2026, 10, 10, 100}) == WORKFORCE_OK);
+    CHECK(store_add_contract(store, id, (HourContract){2026, 10, 10, 100, 0}, &contract_id) ==
+          WORKFORCE_OK);
     CHECK(store_set_salary(store, id, (SalaryChange){2027, 1, 450000}) == WORKFORCE_OK);
     CHECK(store_set_salary(store, id, (SalaryChange){2026, 10, 400000}) == WORKFORCE_OK);
     CHECK(store_set_salary(store, id, (SalaryChange){2026, 10, 420000}) == WORKFORCE_OK);
@@ -117,13 +119,15 @@ static void test_rollback_and_lower_salary(void)
     WorkerProfile data = profile();
     Worker worker = {0};
     uint32_t id;
+    int64_t contract_id;
     sqlite3 *raw = NULL;
     delete_database();
     store = open_store();
     data.salary_cents = INT64_MAX;
     CHECK(store_add_worker(store, &data, &id) == WORKFORCE_OK);
     CHECK(store_set_salary(store, id, (SalaryChange){2026, 10, 0}) == WORKFORCE_OK);
-    CHECK(store_add_contract(store, id, (HourContract){2026, 10, 1, 10}) == WORKFORCE_OK);
+    CHECK(store_add_contract(store, id, (HourContract){2026, 10, 1, 10, 0}, &contract_id) ==
+          WORKFORCE_OK);
     CHECK(store_remove_salary(store, id, 2026, 10) == WORKFORCE_OVERFLOW);
     store_close(store);
     store = open_store();
@@ -140,7 +144,7 @@ static void test_rollback_and_lower_salary(void)
              "CREATE TRIGGER reject_salary_delete BEFORE DELETE ON salary_changes "
              "BEGIN SELECT RAISE(ABORT,'simulated failure'); END");
     /* A valid domain deletion must still roll back if the database rejects it. */
-    CHECK(store_remove_contract(store, id, 0) == WORKFORCE_OK);
+    CHECK(store_remove_contract(store, id, 1) == WORKFORCE_OK);
     CHECK(store_remove_salary(store, id, 2026, 10) == WORKFORCE_IO_ERROR);
     check_income(store, id, 2026, 10, 0);
     sql(raw, "DROP TRIGGER reject_salary_delete; "

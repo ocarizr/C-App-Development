@@ -229,7 +229,8 @@ WorkforceStatus worker_add_contract(Worker *worker, HourContract contract)
     int64_t value;
     WorkforceStatus status;
     if (worker == NULL || worker->id == 0 || !valid_period(contract.year, contract.month) ||
-        contract.hours <= 0 || contract.hourly_rate_cents < 0)
+        contract.hours <= 0 || contract.hourly_rate_cents < 0 || contract.id < 0 ||
+        (contract.id > 0 && worker_find_contract(worker, contract.id) != NULL))
     {
         return WORKFORCE_INVALID;
     }
@@ -246,6 +247,14 @@ WorkforceStatus worker_add_contract(Worker *worker, HourContract contract)
     if (income > INT64_MAX - value)
     {
         return WORKFORCE_OVERFLOW;
+    }
+    if (contract.id == 0)
+    {
+        if (worker->last_contract_id == INT64_MAX)
+        {
+            return WORKFORCE_OVERFLOW;
+        }
+        contract.id = worker->last_contract_id + 1;
     }
     if (worker->contract_count == worker->contract_capacity)
     {
@@ -264,19 +273,83 @@ WorkforceStatus worker_add_contract(Worker *worker, HourContract contract)
         worker->contract_capacity = capacity;
     }
     worker->contracts[worker->contract_count++] = contract;
+    if (contract.id > worker->last_contract_id)
+    {
+        worker->last_contract_id = contract.id;
+    }
     return WORKFORCE_OK;
 }
 
-WorkforceStatus worker_remove_contract(Worker *worker, size_t index)
+const HourContract *worker_find_contract(const Worker *worker, int64_t contract_id)
 {
-    if (worker == NULL || worker->id == 0)
+    if (worker != NULL && contract_id > 0)
+    {
+        for (size_t i = 0; i < worker->contract_count; ++i)
+        {
+            if (worker->contracts[i].id == contract_id)
+            {
+                return &worker->contracts[i];
+            }
+        }
+    }
+    return NULL;
+}
+
+WorkforceStatus worker_update_contract(Worker *worker, int64_t contract_id,
+                                       HourContract replacement)
+{
+    const HourContract *original;
+    int64_t income;
+    int64_t value;
+    WorkforceStatus status;
+    if (worker == NULL || worker->id == 0 || contract_id <= 0 ||
+        !valid_period(replacement.year, replacement.month) || replacement.hours <= 0 ||
+        replacement.hourly_rate_cents < 0 || (replacement.id != 0 && replacement.id != contract_id))
     {
         return WORKFORCE_INVALID;
     }
-    if (index >= worker->contract_count)
+    original = worker_find_contract(worker, contract_id);
+    if (original == NULL)
     {
         return WORKFORCE_NOT_FOUND;
     }
+    if (replacement.hourly_rate_cents > INT64_MAX / replacement.hours)
+    {
+        return WORKFORCE_OVERFLOW;
+    }
+    status = worker_income(worker, replacement.year, replacement.month, &income);
+    if (status != WORKFORCE_OK)
+    {
+        return status;
+    }
+    if (original->year == replacement.year && original->month == replacement.month)
+    {
+        income -= original->hours * original->hourly_rate_cents;
+    }
+    value = replacement.hours * replacement.hourly_rate_cents;
+    if (income > INT64_MAX - value)
+    {
+        return WORKFORCE_OVERFLOW;
+    }
+    replacement.id = contract_id;
+    worker->contracts[(size_t)(original - worker->contracts)] = replacement;
+    return WORKFORCE_OK;
+}
+
+WorkforceStatus worker_remove_contract(Worker *worker, int64_t contract_id)
+{
+    const HourContract *contract;
+    size_t index;
+    if (worker == NULL || worker->id == 0 || contract_id <= 0)
+    {
+        return WORKFORCE_INVALID;
+    }
+    contract = worker_find_contract(worker, contract_id);
+    if (contract == NULL)
+    {
+        return WORKFORCE_NOT_FOUND;
+    }
+    index = (size_t)(contract - worker->contracts);
     memmove(&worker->contracts[index], &worker->contracts[index + 1],
             (worker->contract_count - index - 1) * sizeof(*worker->contracts));
     --worker->contract_count;

@@ -40,6 +40,7 @@ typedef struct
     int month;
     int hours;
     int64_t hourly_rate_cents;
+    int64_t id;
 } HourContract;
 
 typedef struct
@@ -58,6 +59,7 @@ typedef struct
     HourContract *contracts;
     size_t contract_count;
     size_t contract_capacity;
+    int64_t last_contract_id;
     SalaryChange *salary_changes;
     size_t salary_count;
 } Worker;
@@ -86,7 +88,13 @@ WorkforceStatus worker_salary_at(const Worker *worker, int year, int month, int6
 WorkforceStatus worker_set_salary(Worker *worker, SalaryChange change);
 WorkforceStatus worker_remove_salary(Worker *worker, int year, int month);
 WorkforceStatus worker_add_contract(Worker *worker, HourContract contract);
-WorkforceStatus worker_remove_contract(Worker *worker, size_t index);
+/* A zero ID on add allocates a local monotonic ID; persistence supplies its own
+ * stable positive ID when reconstructing the aggregate. Edits preserve identity.
+ * Borrowed contract pointers must be reacquired after collection mutations. */
+const HourContract *worker_find_contract(const Worker *worker, int64_t contract_id);
+WorkforceStatus worker_update_contract(Worker *worker, int64_t contract_id,
+                                       HourContract replacement);
+WorkforceStatus worker_remove_contract(Worker *worker, int64_t contract_id);
 /* Salary effective in year/month plus matching contracts, with checked arithmetic. */
 WorkforceStatus worker_income(const Worker *worker, int year, int month, int64_t *cents);
 WorkforceStatus team_add(Team *team, const WorkerProfile *profile, uint32_t *id);

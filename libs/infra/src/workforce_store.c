@@ -257,7 +257,7 @@ static WorkforceStatus load_contracts(WorkforceStore *store, Worker *worker)
     int result = SQLITE_DONE;
     WorkforceStatus status = prepare(
         store,
-        "SELECT year,month,hours,hourly_rate_cents FROM contracts WHERE worker_id=? ORDER BY id",
+        "SELECT year,month,hours,hourly_rate_cents,id FROM contracts WHERE worker_id=? ORDER BY id",
         &statement);
     if (status != WORKFORCE_OK)
     {
@@ -271,7 +271,8 @@ static WorkforceStatus load_contracts(WorkforceStore *store, Worker *worker)
     {
         HourContract contract = {sqlite3_column_int(statement, 0), sqlite3_column_int(statement, 1),
                                  sqlite3_column_int(statement, 2),
-                                 sqlite3_column_int64(statement, 3)};
+                                 sqlite3_column_int64(statement, 3),
+                                 sqlite3_column_int64(statement, 4)};
         status = worker_add_contract(worker, contract);
         if (status == WORKFORCE_INVALID || status == WORKFORCE_OVERFLOW)
         {
@@ -557,12 +558,14 @@ WorkforceStatus store_remove_worker(WorkforceStore *store, uint32_t id)
     return status == WORKFORCE_OK && sqlite3_changes(store->db) == 0 ? WORKFORCE_NOT_FOUND : status;
 }
 
-WorkforceStatus store_add_contract(WorkforceStore *store, uint32_t id, HourContract contract)
+WorkforceStatus store_add_contract(WorkforceStore *store, uint32_t id, HourContract contract,
+                                   int64_t *contract_id)
 {
     Worker worker = {0};
     sqlite3_stmt *statement = NULL;
     WorkforceStatus status;
-    if (store == NULL || id == 0)
+    int64_t assigned = 0;
+    if (store == NULL || id == 0 || contract_id == NULL || contract.id != 0)
     {
         return WORKFORCE_INVALID;
     }
@@ -598,29 +601,32 @@ WorkforceStatus store_add_contract(WorkforceStore *store, uint32_t id, HourContr
         else
         {
             status = step_write(store, statement);
+            assigned = sqlite3_last_insert_rowid(store->db);
         }
     }
-    return finish_write(store, status);
+    status = finish_write(store, status);
+    if (status == WORKFORCE_OK)
+    {
+        *contract_id = assigned;
+    }
+    return status;
 }
 
-WorkforceStatus store_remove_contract(WorkforceStore *store, uint32_t id, size_t index)
+WorkforceStatus store_remove_contract(WorkforceStore *store, uint32_t id, int64_t contract_id)
 {
     sqlite3_stmt *statement = NULL;
     WorkforceStatus status;
-    if (store == NULL || id == 0 || index > INT64_MAX)
+    if (store == NULL || id == 0 || contract_id <= 0)
     {
         return WORKFORCE_INVALID;
     }
-    status = prepare(store,
-                     "DELETE FROM contracts WHERE id=(SELECT id FROM contracts WHERE worker_id=? "
-                     "ORDER BY id LIMIT 1 OFFSET ?)",
-                     &statement);
+    status = prepare(store, "DELETE FROM contracts WHERE worker_id=? AND id=?", &statement);
     if (status != WORKFORCE_OK)
     {
         return status;
     }
     if (sqlite3_bind_int64(statement, 1, id) != SQLITE_OK ||
-        sqlite3_bind_int64(statement, 2, (sqlite3_int64)index) != SQLITE_OK)
+        sqlite3_bind_int64(statement, 2, contract_id) != SQLITE_OK)
     {
         status = db_error(store);
         (void)sqlite3_finalize(statement);
@@ -628,6 +634,54 @@ WorkforceStatus store_remove_contract(WorkforceStore *store, uint32_t id, size_t
     }
     status = step_write(store, statement);
     return status == WORKFORCE_OK && sqlite3_changes(store->db) == 0 ? WORKFORCE_NOT_FOUND : status;
+}
+
+WorkforceStatus store_update_contract(WorkforceStore *store, uint32_t id, int64_t contract_id,
+                                      HourContract replacement)
+{
+    Worker worker = {0};
+    sqlite3_stmt *statement = NULL;
+    WorkforceStatus status;
+    if (store == NULL || id == 0 || contract_id <= 0)
+    {
+        return WORKFORCE_INVALID;
+    }
+    status = exec_sql(store, "BEGIN IMMEDIATE");
+    if (status != WORKFORCE_OK)
+    {
+        return status;
+    }
+    status = find_worker(store, id, &worker);
+    if (status == WORKFORCE_OK)
+    {
+        status = worker_update_contract(&worker, contract_id, replacement);
+    }
+    worker_dispose(&worker);
+    if (status == WORKFORCE_OK)
+    {
+        status = prepare(store,
+                         "UPDATE contracts SET year=?,month=?,hours=?,hourly_rate_cents=? "
+                         "WHERE worker_id=? AND id=?",
+                         &statement);
+    }
+    if (status == WORKFORCE_OK)
+    {
+        if (sqlite3_bind_int(statement, 1, replacement.year) != SQLITE_OK ||
+            sqlite3_bind_int(statement, 2, replacement.month) != SQLITE_OK ||
+            sqlite3_bind_int(statement, 3, replacement.hours) != SQLITE_OK ||
+            sqlite3_bind_int64(statement, 4, replacement.hourly_rate_cents) != SQLITE_OK ||
+            sqlite3_bind_int64(statement, 5, id) != SQLITE_OK ||
+            sqlite3_bind_int64(statement, 6, contract_id) != SQLITE_OK)
+        {
+            status = db_error(store);
+            (void)sqlite3_finalize(statement);
+        }
+        else
+        {
+            status = step_write(store, statement);
+        }
+    }
+    return finish_write(store, status);
 }
 
 typedef enum

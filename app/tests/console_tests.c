@@ -52,7 +52,7 @@ static void test_full_session(void)
     CHECK(strstr(output, "Nenhum funcionario cadastrado.") != NULL);
     CHECK(strstr(output, "ID: 1") != NULL && strstr(output, "ID: 2") != NULL);
     CHECK(strstr(output, "Senior Software Developer | Engineering") != NULL);
-    CHECK(strstr(output, "Contrato 1 | 2026-10 | 10 horas | Valor/hora: 25.50") != NULL);
+    CHECK(strstr(output, "Contrato ID 1 | 2026-10 | 10 horas | Valor/hora: 25.50") != NULL);
     CHECK(strstr(output, "Ana Silva: 3255.00") != NULL);
     CHECK(strstr(output, "Total da equipe: 5255.00") != NULL);
     CHECK(strstr(output, "Total da equipe: 5000.00") != NULL);
@@ -63,7 +63,7 @@ static void test_full_session(void)
 static void test_bad_input(void)
 {
     char output[20000];
-    session("banana\n11\n1\n\nAna\nabc\n0\n30\nDeveloper\nEngineering\n"
+    session("banana\n14\n1\n\nAna\nabc\n0\n30\nDeveloper\nEngineering\n"
             "senior\nSenior\nnan\n-1\n1,50\n1.001\n1000.50\n"
             "3\n999\n4\n1\n1\n6\n999\n0\n",
             output, sizeof(output));
@@ -141,6 +141,28 @@ static void test_history_and_profile(void)
     CHECK(strstr(output, "Sessao encerrada.") != NULL);
 }
 
+static void test_contract_edit_and_reports(void)
+{
+    char output[40000];
+    session("1\nAna\n30\nDeveloper\nEngineering\nSenior\n3000\n"
+            "1\nBruno\n30\nDesigner\nDesign\nJunior\n2000\n"
+            "3\n1\n2026\n10\n1\n10\n3\n1\n2026\n10\n1\n20\n"
+            "4\n1\n1\n11\n1\n2\n2026\n11\n10\n30\n7\n1\n"
+            "12\n2026\n11\nEngineering\ninvalid\nSenior\n"
+            "12\n2026\n11\nMissing\n*\n"
+            "13\n2026\n11\n*\n*\nnonexistent-export-directory/out.csv\n0\n",
+            output, sizeof(output));
+    CHECK(strstr(output, "Contrato ID 2 | 2026-11 | 10 horas | Valor/hora: 30.00") != NULL);
+    CHECK(strstr(output, "Ana: 3300.00") != NULL);
+    CHECK(strstr(output, "Subtotal Engineering (1 funcionarios): 3300.00") != NULL);
+    CHECK(strstr(output, "Bruno: 2000.00") == NULL);
+    CHECK(strstr(output, "Nenhum funcionario encontrado para os filtros.") != NULL);
+    CHECK(strstr(output, "Nao foi possivel exportar.") != NULL);
+    CHECK(strstr(output, "Nivel invalido.") != NULL);
+    session("12\n2026\n", output, sizeof(output));
+    CHECK(strstr(output, "Sessao encerrada.") != NULL);
+}
+
 int main(void)
 {
     test_full_session();
@@ -148,6 +170,7 @@ int main(void)
     test_long_line_and_eof();
     test_payroll_overflow();
     test_history_and_profile();
+    test_contract_edit_and_reports();
     CHECK(console_run(NULL, stdout, NULL) == EXIT_FAILURE);
     CHECK(console_run(stdin, NULL, NULL) == EXIT_FAILURE);
     puts("Console tests passed.");
