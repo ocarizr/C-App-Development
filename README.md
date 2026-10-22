@@ -170,14 +170,22 @@ cmake --build build-sanitized --parallel
 ctest --test-dir build-sanitized --output-on-failure --no-tests=error
 ```
 
-Formatação usa `.clang-format`, com LLVM 18 no CI. No PowerShell:
+Formatação usa `.clang-format`, com LLVM 18 no CI: quatro espaços, chaves Allman,
+includes agrupados, uma linha vazia entre funções/definições e no máximo uma
+linha vazia consecutiva. `scripts/check_spacing.py` complementa as regras com
+uma linha vazia após blocos e entre includes e declarações. `else`, `do/while`,
+fechamentos de blocos externos e diretivas condicionais preservam sua associação.
+O script requer Python 3, somente com a biblioteca padrão. No PowerShell:
 
 ```powershell
 $sourceFiles = @(git ls-files -- '*.c' '*.h')
 clang-format --dry-run --Werror -- $sourceFiles
+python scripts/check_spacing.py
 ```
 
-Para aplicar o estilo, substitua `--dry-run --Werror` por `-i`. Para análise com
+Para aplicar, execute clang-format com `-i` e depois
+`python scripts/check_spacing.py --fix`. Para testar o verificador de espaçamento,
+use `python scripts/check_spacing.py --self-test`. Para análise com
 Clang/Ninja (em Developer PowerShell quando usar o SDK do Windows):
 
 ```sh
@@ -191,6 +199,15 @@ O exemplo acima usa sintaxe Bash. No PowerShell, defina `$env:CC = 'clang'` e
 informe `clang-tidy` conforme o nome instalado. O CMake transmite definições e
 includes dos targets ao analyzer; dependências externas ficam fora do clang-tidy.
 Warnings do projeto e diagnósticos habilitados no `.clang-tidy` são erros.
+
+`clang-analyzer-*` verifica caminhos com vazamentos, double free, uso após liberação,
+desreferência nula e valores não inicializados. Os checks `bugprone` também cobrem
+sobrescrita do ponteiro em `realloc`, aritmética/tamanho incorretos na alocação,
+comparações de memória e terminadores de strings. ASan/UBSan exercitam os acessos
+e a aritmética durante os testes; o CI Linux ativa também LeakSanitizer. Essas
+verificações se complementam e não constituem uma prova de segurança de memória
+para todos os caminhos possíveis. Contratos de ownership estão nos headers e
+nos pontos de transferência de recursos.
 
 Os workflows rodam em pull requests para `master`, pushes na `master` e manualmente.
 As badges são independentes:

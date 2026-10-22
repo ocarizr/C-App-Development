@@ -20,12 +20,75 @@ static WorkforceStatus finish(FILE *output)
     return ferror(output) || fflush(output) != 0 ? WORKFORCE_IO_ERROR : WORKFORCE_OK;
 }
 
+WorkforceStatus team_write_text(FILE *output, const Team *team)
+{
+    if (output == NULL || team == NULL || (team->count > 0 && team->workers == NULL))
+    {
+        return WORKFORCE_INVALID;
+    }
+
+    fputs("ID | Nome | Idade | Cargo | Departamento | Nivel\n", output);
+    for (size_t i = 0; i < team->count; ++i)
+    {
+        const Worker *worker = &team->workers[i];
+        fprintf(output, "%" PRIu32 " | %s | %d | %s | %s | %s\n", worker->id, worker->profile.name,
+                worker->profile.age, worker->profile.profession, worker->profile.department,
+                worker_level_name(worker->profile.level));
+    }
+
+    return finish(output);
+}
+
+WorkforceStatus worker_write_contracts(FILE *output, const Worker *worker)
+{
+    if (output == NULL || worker == NULL ||
+        (worker->contract_count > 0 && worker->contracts == NULL))
+    {
+        return WORKFORCE_INVALID;
+    }
+
+    fputs("ID | Competencia | Horas | Valor/hora\n", output);
+    for (size_t i = 0; i < worker->contract_count; ++i)
+    {
+        const HourContract *contract = &worker->contracts[i];
+        fprintf(output, "%" PRId64 " | %04d-%02d | %d | ", contract->id, contract->year,
+                contract->month, contract->hours);
+        money(output, contract->hourly_rate_cents);
+        fputc('\n', output);
+    }
+
+    return finish(output);
+}
+
+WorkforceStatus worker_write_history(FILE *output, const Worker *worker)
+{
+    if (output == NULL || worker == NULL ||
+        (worker->salary_count > 0 && worker->salary_changes == NULL))
+    {
+        return WORKFORCE_INVALID;
+    }
+
+    fputs("Salario inicial: ", output);
+    money(output, worker->profile.salary_cents);
+    fputs("\nCompetencia | Salario vigente\n", output);
+    for (size_t i = 0; i < worker->salary_count; ++i)
+    {
+        const SalaryChange *change = &worker->salary_changes[i];
+        fprintf(output, "%04d-%02d | ", change->year, change->month);
+        money(output, change->salary_cents);
+        fputc('\n', output);
+    }
+
+    return finish(output);
+}
+
 WorkforceStatus report_write_text(FILE *output, const PayrollReport *report)
 {
     if (output == NULL || !valid_report(report))
     {
         return WORKFORCE_INVALID;
     }
+
     fprintf(output, "Remuneracao de %04d-%02d:\n", report->year, report->month);
     fprintf(output, "Departamento: %s | Nivel: %s\n",
             report->filter.department[0] == '\0' ? "Todos" : report->filter.department,
@@ -34,6 +97,7 @@ WorkforceStatus report_write_text(FILE *output, const PayrollReport *report)
     {
         fputs("Nenhum funcionario encontrado para os filtros.\n", output);
     }
+
     for (size_t i = 0; i < report->count; ++i)
     {
         const ReportRow *row = &report->rows[i];
@@ -46,6 +110,7 @@ WorkforceStatus report_write_text(FILE *output, const PayrollReport *report)
         money(output, row->contracts_cents);
         fputc('\n', output);
     }
+
     for (size_t i = 0; i < report->department_count; ++i)
     {
         const DepartmentTotal *department = &report->departments[i];
@@ -54,6 +119,7 @@ WorkforceStatus report_write_text(FILE *output, const PayrollReport *report)
         money(output, department->total_cents);
         fputc('\n', output);
     }
+
     fputs("Total da equipe: ", output);
     money(output, report->total_cents);
     fputc('\n', output);
@@ -67,20 +133,24 @@ static void csv_text(FILE *output, const char *text)
     {
         ++first;
     }
+
     fputc('"', output);
     /* Keep user text from being interpreted as a spreadsheet formula. */
     if (*first == '=' || *first == '+' || *first == '-' || *first == '@')
     {
         fputc('\'', output);
     }
+
     for (; *text != '\0'; ++text)
     {
         if (*text == '"')
         {
             fputc('"', output);
         }
+
         fputc(*text, output);
     }
+
     fputc('"', output);
 }
 
@@ -100,6 +170,7 @@ WorkforceStatus report_write_csv(FILE *output, const PayrollReport *report)
     {
         return WORKFORCE_INVALID;
     }
+
     fputs("type,year,month,worker_id,name,profession,department,level,worker_count,salary,"
           "contracts,total\r\n",
           output);
@@ -117,6 +188,7 @@ WorkforceStatus report_write_csv(FILE *output, const PayrollReport *report)
         fputs(",1,", output);
         csv_amounts(output, row->salary_cents, row->contracts_cents, row->total_cents);
     }
+
     for (size_t i = 0; i < report->department_count; ++i)
     {
         const DepartmentTotal *department = &report->departments[i];
@@ -126,6 +198,7 @@ WorkforceStatus report_write_csv(FILE *output, const PayrollReport *report)
         csv_amounts(output, department->salary_cents, department->contracts_cents,
                     department->total_cents);
     }
+
     fprintf(output, "TOTAL,%d,%d,,,,,,%zu,", report->year, report->month, report->count);
     csv_amounts(output, report->salary_cents, report->contracts_cents, report->total_cents);
     return finish(output);
@@ -148,14 +221,17 @@ WorkforceStatus report_export_csv(const char *path, const PayrollReport *report)
     {
         return WORKFORCE_IO_ERROR;
     }
+
     status = report_write_csv(file, report);
     if (fclose(file) != 0)
     {
         status = WORKFORCE_IO_ERROR;
     }
+
     if (status != WORKFORCE_OK)
     {
         (void)remove(path);
     }
+
     return status;
 }

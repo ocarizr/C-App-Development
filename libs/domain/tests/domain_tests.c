@@ -42,6 +42,7 @@ static void test_money(void)
         CHECK(!money_parse(invalid[i], &cents));
         CHECK(cents == 17);
     }
+
     CHECK(!money_parse(NULL, &cents));
     CHECK(!money_parse("1", NULL));
 }
@@ -57,6 +58,7 @@ static void test_profiles(void)
         CHECK(worker_level_parse(worker_level_name((WorkerLevel)i), &level) == WORKFORCE_OK);
         CHECK(level == (WorkerLevel)i);
     }
+
     CHECK(worker_level_parse("Invalid", &level) == WORKFORCE_INVALID);
     CHECK(worker_level_parse(NULL, &level) == WORKFORCE_INVALID);
     CHECK(worker_level_parse("Junior", NULL) == WORKFORCE_INVALID);
@@ -137,6 +139,7 @@ static void test_contracts(void)
     {
         CHECK(worker_add_contract(&worker, october) == WORKFORCE_OK);
     }
+
     CHECK(worker.contract_count == 100);
     CHECK(worker_income(&worker, 2026, 10, &income) == WORKFORCE_OK && income == 2850000);
     income = 17;
@@ -197,6 +200,7 @@ static void test_team(void)
         CHECK(worker != NULL);
         CHECK(worker_add_contract(worker, contract) == WORKFORCE_OK);
     }
+
     CHECK(team.count == 100);
     CHECK(team_remove(&team, 50) == WORKFORCE_OK);
     CHECK(team_find(&team, 50) == NULL && team.count == 99);

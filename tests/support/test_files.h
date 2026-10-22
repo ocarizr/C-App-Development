@@ -2,6 +2,7 @@
 #define WORKFORCE_TEST_FILES_H
 
 #include "test.h"
+
 #include <errno.h>
 
 static FILE *test_file(const char *path, const char *mode)

@@ -10,6 +10,7 @@ bool money_parse(const char *text, int64_t *cents)
     {
         return false;
     }
+
     while (*text >= '0' && *text <= '9')
     {
         int digit = *text++ - '0';
@@ -17,8 +18,10 @@ bool money_parse(const char *text, int64_t *cents)
         {
             return false;
         }
+
         whole = whole * 10 + digit;
     }
+
     if (*text == '.')
     {
         ++text;
@@ -26,16 +29,19 @@ bool money_parse(const char *text, int64_t *cents)
         {
             return false;
         }
+
         fraction = (*text++ - '0') * 10;
         if (*text >= '0' && *text <= '9')
         {
             fraction += *text++ - '0';
         }
     }
+
     if (*text != '\0' || whole > (INT64_MAX - fraction) / 100)
     {
         return false;
     }
+
     *cents = whole * 100 + fraction;
     return true;
 }

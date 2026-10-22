@@ -2,11 +2,13 @@
 #define WORKFORCE_STORE_H
 
 #include "workforce.h"
+
 #include <stdbool.h>
 
 #define WORKFORCE_STORE_ERROR_SIZE 256
 
 typedef struct WorkforceStore WorkforceStore;
+
 typedef struct
 {
     const char *path;

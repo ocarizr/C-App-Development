@@ -1,11 +1,11 @@
 #include "ui_internal.h"
+
 #include <stdlib.h>
 #include <string.h>
 #ifdef _WIN32
 #include <conio.h>
 #include <windows.h>
 #else
-#include <errno.h>
 #include <poll.h>
 #include <signal.h>
 #include <sys/ioctl.h>
@@ -13,95 +13,15 @@
 #include <unistd.h>
 #endif
 
-int ui_script(UiDocument *doc, FILE *input, FILE *output)
-{
-    char line[2048];
-    if (doc == NULL || input == NULL || output == NULL)
-    {
-        return EXIT_FAILURE;
-    }
-    while (!doc->quit && fgets(line, sizeof(line), input) != NULL)
-    {
-        size_t length = strlen(line);
-        if (length == sizeof(line) - 1 && line[length - 1] != '\n')
-        {
-            fputs("Linha de script longa demais.\n", output);
-            return EXIT_FAILURE;
-        }
-        line[strcspn(line, "\r\n")] = '\0';
-        if (line[0] == '\0' || line[0] == '#')
-        {
-            continue;
-        }
-        if (strncmp(line, "set ", 4) == 0)
-        {
-            char *separator = strchr(line + 4, '=');
-            if (separator == NULL)
-            {
-                return EXIT_FAILURE;
-            }
-            *separator = '\0';
-            if (!mvvm_set(doc->model, line + 4, separator + 1))
-            {
-                return EXIT_FAILURE;
-            }
-        }
-        else if (strncmp(line, "invoke ", 7) == 0 || strncmp(line, "reject ", 7) == 0)
-        {
-            bool expected = line[0] == 'i';
-            if (!mvvm_has_command(doc->model, line + 7) ||
-                mvvm_execute(doc->model, line + 7) != expected)
-            {
-                const char *status = mvvm_get(doc->model, "status");
-                fprintf(output, "Comando falhou: %s (%s)\n", line + 7,
-                        status == NULL ? "" : status);
-                return EXIT_FAILURE;
-            }
-        }
-        else if (strncmp(line, "get ", 4) == 0)
-        {
-            const char *value = mvvm_get(doc->model, line + 4);
-            if (value == NULL)
-            {
-                return EXIT_FAILURE;
-            }
-            fprintf(output, "%s\n", value);
-        }
-        else if (strncmp(line, "tab ", 4) == 0)
-        {
-            if (!ui_select_tab(doc, line + 4))
-            {
-                return EXIT_FAILURE;
-            }
-        }
-        else if (strcmp(line, "render") == 0)
-        {
-            if (!ui_render(doc, output, 120, 40, true))
-            {
-                return EXIT_FAILURE;
-            }
-            fputc('\n', output);
-        }
-        else if (strcmp(line, "quit") == 0)
-        {
-            break;
-        }
-        else
-        {
-            fprintf(output, "Instrucao desconhecida: %s\n", line);
-            return EXIT_FAILURE;
-        }
-    }
-    return ferror(input) || fflush(output) != 0 || ferror(output) ? EXIT_FAILURE : EXIT_SUCCESS;
-}
-
 #ifndef _WIN32
 static volatile sig_atomic_t stopped;
+
 static void stop_signal(int number)
 {
     (void)number;
     stopped = 1;
 }
+
 static int byte_ready(int timeout)
 {
     struct pollfd descriptor = {STDIN_FILENO, POLLIN, 0};
@@ -119,6 +39,7 @@ enum
     KEY_LEFT,
     KEY_RIGHT
 };
+
 static int read_key(void)
 {
 #ifdef _WIN32
@@ -127,6 +48,7 @@ static int read_key(void)
         Sleep(100);
         return -1;
     }
+
     int key = _getwch();
     if (key == 0 || key == 224)
     {
@@ -154,6 +76,7 @@ static int read_key(void)
             return -1;
         }
     }
+
     return key;
 #else
     unsigned char key;
@@ -161,10 +84,12 @@ static int read_key(void)
     {
         return -1;
     }
+
     if (read(STDIN_FILENO, &key, 1) != 1)
     {
         return 3;
     }
+
     if (key == 27 && byte_ready(60))
     {
         char sequence[16] = {0};
@@ -175,6 +100,7 @@ static int read_key(void)
             {
                 break;
             }
+
             char c = sequence[length++];
             if (length > 1 && ((c >= 'A' && c <= 'Z') || c == '~'))
             {
@@ -185,39 +111,49 @@ static int read_key(void)
         {
             return KEY_PREVIOUS;
         }
+
         if (strcmp(sequence, "[B") == 0)
         {
             return KEY_NEXT;
         }
+
         if (strcmp(sequence, "[D") == 0)
         {
             return KEY_LEFT;
         }
+
         if (strcmp(sequence, "[C") == 0)
         {
             return KEY_RIGHT;
         }
+
         if (strcmp(sequence, "OP") == 0 || strcmp(sequence, "[11~") == 0)
         {
             return KEY_TAB_PREVIOUS;
         }
+
         if (strcmp(sequence, "OQ") == 0 || strcmp(sequence, "[12~") == 0)
         {
             return KEY_TAB_NEXT;
         }
+
         if (strcmp(sequence, "[5~") == 0)
         {
             return KEY_PAGE_UP;
         }
+
         if (strcmp(sequence, "[6~") == 0)
         {
             return KEY_PAGE_DOWN;
         }
+
         return -1;
     }
+
     return key;
 #endif
 }
+
 static void key_text(UiDocument *doc, int key)
 {
     char text[5] = {0};
@@ -227,6 +163,7 @@ static void key_text(UiDocument *doc, int key)
     {
         return;
     }
+
     if (c < 128)
     {
         text[0] = (char)c;
@@ -252,6 +189,7 @@ static void key_text(UiDocument *doc, int key)
     {
         return;
     }
+
     for (int i = 1; i <= continuation; ++i)
     {
         if (!byte_ready(100) || read(STDIN_FILENO, &text[i], 1) != 1 ||
@@ -263,8 +201,10 @@ static void key_text(UiDocument *doc, int key)
 #endif
     (void)ui_text(doc, text);
 }
+
 int ui_run(UiDocument *doc)
 {
+    /* After entering raw/alternate-screen mode, all exit paths share restoration below. */
     int result = EXIT_SUCCESS;
     int last_width = -1, last_height = -1;
     size_t revision = 0;
@@ -278,12 +218,14 @@ int ui_run(UiDocument *doc)
         fputs("A UI requer um terminal. Para automacao use --script arquivo.\n", stderr);
         return EXIT_FAILURE;
     }
+
     if (!SetConsoleMode(output, output_mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING) ||
         !SetConsoleMode(input, input_mode & ~(DWORD)ENABLE_PROCESSED_INPUT))
     {
         SetConsoleMode(output, output_mode);
         return EXIT_FAILURE;
     }
+
     SetConsoleOutputCP(CP_UTF8);
 #else
     struct termios original, raw;
@@ -294,6 +236,7 @@ int ui_run(UiDocument *doc)
         fputs("A UI requer um terminal. Para automacao use --script arquivo.\n", stderr);
         return EXIT_FAILURE;
     }
+
     raw = original;
     raw.c_lflag &= (tcflag_t) ~(ICANON | ECHO | ISIG);
     raw.c_iflag &= (tcflag_t) ~(IXON | ICRNL);
@@ -303,6 +246,7 @@ int ui_run(UiDocument *doc)
     {
         return EXIT_FAILURE;
     }
+
     stopped = 0;
     action.sa_handler = stop_signal;
     sigemptyset(&action.sa_mask);
@@ -311,6 +255,7 @@ int ui_run(UiDocument *doc)
         tcsetattr(STDIN_FILENO, TCSAFLUSH, &original);
         return EXIT_FAILURE;
     }
+
     if (sigaction(SIGTERM, &action, &old_term) != 0)
     {
         sigaction(SIGINT, &old_int, NULL);
@@ -335,6 +280,7 @@ int ui_run(UiDocument *doc)
         {
             break;
         }
+
         if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &size) == 0 && size.ws_col > 0 && size.ws_row > 0)
         {
             width = size.ws_col;
@@ -351,21 +297,25 @@ int ui_run(UiDocument *doc)
                 result = EXIT_FAILURE;
                 break;
             }
+
             dirty = false;
             last_width = width;
             last_height = height;
             revision = mvvm_revision(doc->model);
         }
+
         int key = read_key();
         if (key == -1)
         {
             continue;
         }
+
         dirty = true;
         if (key == 27 || key == 3 || key == 4)
         {
             break;
         }
+
         switch (key)
         {
         case 9:
@@ -409,9 +359,11 @@ int ui_run(UiDocument *doc)
             {
                 key_text(doc, key);
             }
+
             break;
         }
     }
+
     fputs("\033[0m\033[?25h\033[?1049l", stdout);
     fflush(stdout);
 #ifdef _WIN32

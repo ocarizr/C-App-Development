@@ -2,6 +2,7 @@
 #define WORKFORCE_REPORT_H
 
 #include "workforce.h"
+
 #include <stdbool.h>
 
 typedef struct

@@ -36,25 +36,30 @@ static WorkforceStatus finish_write(WorkforceStore *store, WorkforceStatus statu
     {
         status = exec_sql(store, "COMMIT");
     }
+
     if (status != WORKFORCE_OK)
     {
         /* Preserve the original diagnostic if rollback succeeds or fails. */
         (void)sqlite3_exec(store->db, "ROLLBACK", NULL, NULL, NULL);
     }
+
     return status;
 }
 
 static WorkforceStatus step_write(WorkforceStore *store, sqlite3_stmt *statement)
 {
+    /* Consumes the prepared statement even when stepping fails. Callers must not finalize it. */
     WorkforceStatus status = WORKFORCE_OK;
     if (sqlite3_step(statement) != SQLITE_DONE)
     {
         status = db_error(store);
     }
+
     if (sqlite3_finalize(statement) != SQLITE_OK && status == WORKFORCE_OK)
     {
         status = db_error(store);
     }
+
     return status;
 }
 
@@ -66,6 +71,7 @@ static WorkforceStatus pragma_integer(WorkforceStore *store, const char *sql, in
     {
         return status;
     }
+
     if (sqlite3_step(statement) == SQLITE_ROW)
     {
         *value = sqlite3_column_int(statement, 0);
@@ -74,6 +80,7 @@ static WorkforceStatus pragma_integer(WorkforceStore *store, const char *sql, in
     {
         status = db_error(store);
     }
+
     (void)sqlite3_finalize(statement);
     return status;
 }
@@ -88,11 +95,13 @@ static WorkforceStatus initialize_schema(WorkforceStore *store)
     {
         return status;
     }
+
     status = pragma_integer(store, "PRAGMA user_version", &version);
     if (status == WORKFORCE_OK)
     {
         status = pragma_integer(store, "PRAGMA application_id", &application);
     }
+
     if (status == WORKFORCE_OK && version == 0 && application == 0)
     {
         status = pragma_integer(
@@ -133,11 +142,13 @@ static WorkforceStatus initialize_schema(WorkforceStore *store)
     {
         status = WORKFORCE_IO_ERROR;
     }
+
     if (status == WORKFORCE_IO_ERROR && sqlite3_errcode(store->db) == SQLITE_OK)
     {
         (void)snprintf(store->error, sizeof(store->error),
                        "Banco ou versao de esquema incompativel.");
     }
+
     if (status == WORKFORCE_OK)
     {
         sqlite3_stmt *statement = NULL;
@@ -149,6 +160,7 @@ static WorkforceStatus initialize_schema(WorkforceStore *store)
                     &statement);
         (void)sqlite3_finalize(statement);
     }
+
     if (status == WORKFORCE_OK && version == 1)
     {
         status =
@@ -160,6 +172,7 @@ static WorkforceStatus initialize_schema(WorkforceStore *store)
                             "PRIMARY KEY(worker_id,year,month)) STRICT;"
                             "PRAGMA user_version=2;");
     }
+
     if (status == WORKFORCE_OK)
     {
         sqlite3_stmt *statement = NULL;
@@ -168,6 +181,7 @@ static WorkforceStatus initialize_schema(WorkforceStore *store)
                     &statement);
         (void)sqlite3_finalize(statement);
     }
+
     return finish_write(store, status);
 }
 
@@ -184,12 +198,14 @@ WorkforceStatus store_open(const StoreOptions *options, WorkforceStore **output,
     {
         return WORKFORCE_INVALID;
     }
+
     store = calloc(1, sizeof(*store));
     if (store == NULL)
     {
         (void)snprintf(error, WORKFORCE_STORE_ERROR_SIZE, "Memoria insuficiente.");
         return WORKFORCE_NO_MEMORY;
     }
+
     result = sqlite3_open_v2(options->path, &store->db, SQLITE_OPEN_READWRITE, NULL);
     if (result == SQLITE_CANTOPEN)
     {
@@ -199,6 +215,7 @@ WorkforceStatus store_open(const StoreOptions *options, WorkforceStore **output,
                                  SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
         is_new = result == SQLITE_OK;
     }
+
     if (result != SQLITE_OK)
     {
         status = db_error(store);
@@ -212,12 +229,14 @@ WorkforceStatus store_open(const StoreOptions *options, WorkforceStore **output,
             status = initialize_schema(store);
         }
     }
+
     if (status != WORKFORCE_OK)
     {
         (void)snprintf(error, WORKFORCE_STORE_ERROR_SIZE, "%s", store->error);
         store_close(store);
         return status;
     }
+
     error[0] = '\0';
     *output = store;
     *created = is_new;
@@ -247,6 +266,7 @@ static bool column_text(sqlite3_stmt *statement, int index, char output[WORKFORC
     {
         return false;
     }
+
     memcpy(output, text, (size_t)bytes + 1);
     return true;
 }
@@ -263,10 +283,12 @@ static WorkforceStatus load_contracts(WorkforceStore *store, Worker *worker)
     {
         return status;
     }
+
     if (sqlite3_bind_int64(statement, 1, worker->id) != SQLITE_OK)
     {
         status = db_error(store);
     }
+
     while (status == WORKFORCE_OK && (result = sqlite3_step(statement)) == SQLITE_ROW)
     {
         HourContract contract = {sqlite3_column_int(statement, 0), sqlite3_column_int(statement, 1),
@@ -280,10 +302,12 @@ static WorkforceStatus load_contracts(WorkforceStore *store, Worker *worker)
             status = WORKFORCE_IO_ERROR;
         }
     }
+
     if (status == WORKFORCE_OK && result != SQLITE_DONE)
     {
         status = db_error(store);
     }
+
     (void)sqlite3_finalize(statement);
     return status;
 }
@@ -300,10 +324,12 @@ static WorkforceStatus load_salary_history(WorkforceStore *store, Worker *worker
     {
         return status;
     }
+
     if (sqlite3_bind_int64(statement, 1, worker->id) != SQLITE_OK)
     {
         status = db_error(store);
     }
+
     while (status == WORKFORCE_OK && (result = sqlite3_step(statement)) == SQLITE_ROW)
     {
         SalaryChange change = {sqlite3_column_int(statement, 0), sqlite3_column_int(statement, 1),
@@ -316,10 +342,12 @@ static WorkforceStatus load_salary_history(WorkforceStore *store, Worker *worker
             status = WORKFORCE_IO_ERROR;
         }
     }
+
     if (status == WORKFORCE_OK && result != SQLITE_DONE)
     {
         status = db_error(store);
     }
+
     (void)sqlite3_finalize(statement);
     return status;
 }
@@ -336,6 +364,7 @@ static WorkforceStatus read_worker(WorkforceStore *store, sqlite3_stmt *statemen
         (void)snprintf(store->error, sizeof(store->error), "Funcionario persistido invalido.");
         return WORKFORCE_IO_ERROR;
     }
+
     profile.age = sqlite3_column_int(statement, 4);
     profile.level = (WorkerLevel)sqlite3_column_int(statement, 5);
     profile.salary_cents = sqlite3_column_int64(statement, 6);
@@ -345,6 +374,7 @@ static WorkforceStatus read_worker(WorkforceStore *store, sqlite3_stmt *statemen
         (void)snprintf(store->error, sizeof(store->error), "Perfil persistido invalido.");
         return WORKFORCE_IO_ERROR;
     }
+
     /* Load the effective salaries before validating contracts: the original
      * salary may exceed a later salary, so loading contracts first is incorrect. */
     status = load_salary_history(store, worker);
@@ -363,6 +393,7 @@ static WorkforceStatus find_worker(WorkforceStore *store, uint32_t id, Worker *w
     {
         return status;
     }
+
     if (sqlite3_bind_int64(statement, 1, id) != SQLITE_OK)
     {
         status = db_error(store);
@@ -379,6 +410,7 @@ static WorkforceStatus find_worker(WorkforceStore *store, uint32_t id, Worker *w
             status = result == SQLITE_DONE ? WORKFORCE_NOT_FOUND : db_error(store);
         }
     }
+
     (void)sqlite3_finalize(statement);
     return status;
 }
@@ -391,11 +423,13 @@ WorkforceStatus store_find(WorkforceStore *store, uint32_t id, Worker *output)
     {
         return WORKFORCE_INVALID;
     }
+
     status = exec_sql(store, "BEGIN");
     if (status != WORKFORCE_OK)
     {
         return status;
     }
+
     status = finish_write(store, find_worker(store, id, &worker));
     if (status == WORKFORCE_OK)
     {
@@ -405,6 +439,7 @@ WorkforceStatus store_find(WorkforceStore *store, uint32_t id, Worker *output)
     {
         worker_dispose(&worker);
     }
+
     return status;
 }
 
@@ -418,11 +453,13 @@ WorkforceStatus store_list(WorkforceStore *store, Team *output)
     {
         return WORKFORCE_INVALID;
     }
+
     status = exec_sql(store, "BEGIN");
     if (status != WORKFORCE_OK)
     {
         return status;
     }
+
     status = prepare(
         store,
         "SELECT id,name,profession,department,age,level,salary_cents FROM workers ORDER BY id",
@@ -436,8 +473,11 @@ WorkforceStatus store_list(WorkforceStore *store, Team *output)
         {
             status = team_add(&team, &worker.profile, &temporary_id);
         }
+
         if (status == WORKFORCE_OK)
         {
+            /* Replace the freshly initialized empty slot with the loaded aggregate.
+             * The team now owns its vectors; the local worker must not be disposed. */
             team.workers[team.count - 1] = worker;
         }
         else
@@ -445,10 +485,12 @@ WorkforceStatus store_list(WorkforceStore *store, Team *output)
             worker_dispose(&worker);
         }
     }
+
     if (status == WORKFORCE_OK && result != SQLITE_DONE)
     {
         status = db_error(store);
     }
+
     (void)sqlite3_finalize(statement);
     status = finish_write(store, status);
     if (status == WORKFORCE_OK)
@@ -457,12 +499,14 @@ WorkforceStatus store_list(WorkforceStore *store, Team *output)
         {
             team.last_id = team.workers[team.count - 1].id;
         }
+
         *output = team;
     }
     else
     {
         team_dispose(&team);
     }
+
     return status;
 }
 
@@ -477,16 +521,19 @@ WorkforceStatus store_add_worker(WorkforceStore *store, const WorkerProfile *pro
     {
         return WORKFORCE_INVALID;
     }
+
     status = worker_init(&worker, 1, profile);
     if (status != WORKFORCE_OK)
     {
         return status;
     }
+
     status = exec_sql(store, "BEGIN IMMEDIATE");
     if (status != WORKFORCE_OK)
     {
         return status;
     }
+
     status = pragma_integer(
         store,
         "SELECT COALESCE((SELECT seq >= 4294967295 FROM sqlite_sequence WHERE name='workers'),0)",
@@ -495,10 +542,12 @@ WorkforceStatus store_add_worker(WorkforceStore *store, const WorkerProfile *pro
     {
         status = WORKFORCE_OVERFLOW;
     }
+
     if (status != WORKFORCE_OK)
     {
         return finish_write(store, status);
     }
+
     status = prepare(store,
                      "INSERT INTO workers(name,profession,department,age,level,salary_cents) "
                      "VALUES(?,?,?,?,?,?)",
@@ -523,15 +572,18 @@ WorkforceStatus store_add_worker(WorkforceStore *store, const WorkerProfile *pro
             assigned = sqlite3_last_insert_rowid(store->db);
         }
     }
+
     if (status == WORKFORCE_OK && (assigned < 1 || assigned > UINT32_MAX))
     {
         status = WORKFORCE_OVERFLOW;
     }
+
     status = finish_write(store, status);
     if (status == WORKFORCE_OK)
     {
         *id = (uint32_t)assigned;
     }
+
     return status;
 }
 
@@ -543,17 +595,20 @@ WorkforceStatus store_remove_worker(WorkforceStore *store, uint32_t id)
     {
         return WORKFORCE_INVALID;
     }
+
     status = prepare(store, "DELETE FROM workers WHERE id=?", &statement);
     if (status != WORKFORCE_OK)
     {
         return status;
     }
+
     if (sqlite3_bind_int64(statement, 1, id) != SQLITE_OK)
     {
         status = db_error(store);
         (void)sqlite3_finalize(statement);
         return status;
     }
+
     status = step_write(store, statement);
     return status == WORKFORCE_OK && sqlite3_changes(store->db) == 0 ? WORKFORCE_NOT_FOUND : status;
 }
@@ -569,16 +624,19 @@ WorkforceStatus store_add_contract(WorkforceStore *store, uint32_t id, HourContr
     {
         return WORKFORCE_INVALID;
     }
+
     status = exec_sql(store, "BEGIN IMMEDIATE");
     if (status != WORKFORCE_OK)
     {
         return status;
     }
+
     status = find_worker(store, id, &worker);
     if (status == WORKFORCE_OK)
     {
         status = worker_add_contract(&worker, contract);
     }
+
     worker_dispose(&worker);
     if (status == WORKFORCE_OK)
     {
@@ -587,6 +645,7 @@ WorkforceStatus store_add_contract(WorkforceStore *store, uint32_t id, HourContr
             "INSERT INTO contracts(worker_id,year,month,hours,hourly_rate_cents) VALUES(?,?,?,?,?)",
             &statement);
     }
+
     if (status == WORKFORCE_OK)
     {
         if (sqlite3_bind_int64(statement, 1, id) != SQLITE_OK ||
@@ -604,11 +663,13 @@ WorkforceStatus store_add_contract(WorkforceStore *store, uint32_t id, HourContr
             assigned = sqlite3_last_insert_rowid(store->db);
         }
     }
+
     status = finish_write(store, status);
     if (status == WORKFORCE_OK)
     {
         *contract_id = assigned;
     }
+
     return status;
 }
 
@@ -620,11 +681,13 @@ WorkforceStatus store_remove_contract(WorkforceStore *store, uint32_t id, int64_
     {
         return WORKFORCE_INVALID;
     }
+
     status = prepare(store, "DELETE FROM contracts WHERE worker_id=? AND id=?", &statement);
     if (status != WORKFORCE_OK)
     {
         return status;
     }
+
     if (sqlite3_bind_int64(statement, 1, id) != SQLITE_OK ||
         sqlite3_bind_int64(statement, 2, contract_id) != SQLITE_OK)
     {
@@ -632,6 +695,7 @@ WorkforceStatus store_remove_contract(WorkforceStore *store, uint32_t id, int64_
         (void)sqlite3_finalize(statement);
         return status;
     }
+
     status = step_write(store, statement);
     return status == WORKFORCE_OK && sqlite3_changes(store->db) == 0 ? WORKFORCE_NOT_FOUND : status;
 }
@@ -646,16 +710,19 @@ WorkforceStatus store_update_contract(WorkforceStore *store, uint32_t id, int64_
     {
         return WORKFORCE_INVALID;
     }
+
     status = exec_sql(store, "BEGIN IMMEDIATE");
     if (status != WORKFORCE_OK)
     {
         return status;
     }
+
     status = find_worker(store, id, &worker);
     if (status == WORKFORCE_OK)
     {
         status = worker_update_contract(&worker, contract_id, replacement);
     }
+
     worker_dispose(&worker);
     if (status == WORKFORCE_OK)
     {
@@ -664,6 +731,7 @@ WorkforceStatus store_update_contract(WorkforceStore *store, uint32_t id, int64_
                          "WHERE worker_id=? AND id=?",
                          &statement);
     }
+
     if (status == WORKFORCE_OK)
     {
         if (sqlite3_bind_int(statement, 1, replacement.year) != SQLITE_OK ||
@@ -681,6 +749,7 @@ WorkforceStatus store_update_contract(WorkforceStore *store, uint32_t id, int64_
             status = step_write(store, statement);
         }
     }
+
     return finish_write(store, status);
 }
 
@@ -701,11 +770,13 @@ static WorkforceStatus edit_worker(WorkforceStore *store, uint32_t id, WorkerEdi
     {
         return WORKFORCE_INVALID;
     }
+
     status = exec_sql(store, "BEGIN IMMEDIATE");
     if (status != WORKFORCE_OK)
     {
         return status;
     }
+
     status = find_worker(store, id, &worker);
     if (status == WORKFORCE_OK)
     {
@@ -722,6 +793,7 @@ static WorkforceStatus edit_worker(WorkforceStore *store, uint32_t id, WorkerEdi
             break;
         }
     }
+
     worker_dispose(&worker);
     if (status == WORKFORCE_OK)
     {
@@ -735,6 +807,7 @@ static WorkforceStatus edit_worker(WorkforceStore *store, uint32_t id, WorkerEdi
                 : "DELETE FROM salary_changes WHERE worker_id=? AND year=? AND month=?";
         status = prepare(store, sql, &statement);
     }
+
     if (status == WORKFORCE_OK)
     {
         bool bound;
@@ -758,6 +831,7 @@ static WorkforceStatus edit_worker(WorkforceStore *store, uint32_t id, WorkerEdi
                     (edit != SET_SALARY ||
                      sqlite3_bind_int64(statement, 4, change.salary_cents) == SQLITE_OK);
         }
+
         if (!bound)
         {
             status = db_error(store);
@@ -768,6 +842,7 @@ static WorkforceStatus edit_worker(WorkforceStore *store, uint32_t id, WorkerEdi
             status = step_write(store, statement);
         }
     }
+
     return finish_write(store, status);
 }
 
@@ -778,6 +853,7 @@ WorkforceStatus store_update_profile(WorkforceStore *store, uint32_t id,
     {
         return WORKFORCE_INVALID;
     }
+
     return edit_worker(store, id, EDIT_PROFILE, profile, (SalaryChange){0});
 }
 

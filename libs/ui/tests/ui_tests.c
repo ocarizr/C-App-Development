@@ -1,5 +1,6 @@
 #include "test.h"
 #include "workforce_ui.h"
+
 #include <string.h>
 
 static bool count(void *context)
@@ -7,6 +8,7 @@ static bool count(void *context)
     ++*(int *)context;
     return true;
 }
+
 static void snapshot(UiDocument *doc, char *text, size_t size, int width, int height)
 {
     FILE *file = tmpfile();
@@ -18,6 +20,7 @@ static void snapshot(UiDocument *doc, char *text, size_t size, int width, int he
     CHECK(!ferror(file));
     CHECK(fclose(file) == 0);
 }
+
 static void invalid(Mvvm *model, const char *xml)
 {
     char error[512];
@@ -29,6 +32,7 @@ static void invalid(Mvvm *model, const char *xml)
     CHECK(error[0] != '\0');
     CHECK(remove("ui-invalid.xml") == 0);
 }
+
 static void invalid_window(Mvvm *model, const char *xml)
 {
     FILE *file = fopen("ui-window-invalid.xml", "wb");
@@ -40,6 +44,7 @@ static void invalid_window(Mvvm *model, const char *xml)
         "<Application><Tabs><Tab id='one' source='ui-window-invalid.xml'/></Tabs></Application>");
     CHECK(remove("ui-window-invalid.xml") == 0);
 }
+
 int main(int argc, char **argv)
 {
     char path[1024], error[512], image[16000], before[16000];
@@ -140,6 +145,7 @@ int main(int argc, char **argv)
         memcpy(large + used, "<Label/>", sizeof("<Label/>") - 1);
         used += sizeof("<Label/>") - 1;
     }
+
     memcpy(large + used, "</Application>", sizeof("</Application>"));
     invalid(model, large);
     used = sizeof("<Application>") - 1;
@@ -149,6 +155,7 @@ int main(int argc, char **argv)
         memcpy(large + used, "<VStack>", sizeof("<VStack>") - 1);
         used += sizeof("<VStack>") - 1;
     }
+
     large[used] = '\0';
     invalid(model, large);
     memset(large, ' ', 69999);

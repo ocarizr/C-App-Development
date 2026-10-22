@@ -12,6 +12,7 @@ static bool fail(char *error, size_t size, const char *message)
     {
         (void)snprintf(error, size, "%s", message);
     }
+
     return false;
 }
 
@@ -31,6 +32,7 @@ static const char *scalar(yaml_document_t *document, int index)
     {
         return NULL;
     }
+
     return (const char *)node->data.scalar.value;
 }
 
@@ -44,21 +46,25 @@ static bool resolve_path(const char *filename, const char *value, char *output, 
     {
         return false;
     }
+
     if (value[0] != '/' && value[0] != '\\' && !(length >= 2 && value[1] == ':'))
     {
         if (backslash != NULL && (slash == NULL || backslash > slash))
         {
             slash = backslash;
         }
+
         if (slash != NULL)
         {
             prefix = (size_t)(slash - filename) + 1;
         }
     }
+
     if (prefix >= size || length >= size - prefix)
     {
         return false;
     }
+
     memcpy(output, filename, prefix);
     memcpy(output + prefix, value, length + 1);
     return true;
@@ -73,6 +79,7 @@ static bool database_mapping(yaml_document_t *document, yaml_node_t *mapping, co
     {
         return false;
     }
+
     for (pair = mapping->data.mapping.pairs.start; pair < mapping->data.mapping.pairs.top; ++pair)
     {
         const char *key = scalar(document, pair->key);
@@ -82,6 +89,7 @@ static bool database_mapping(yaml_document_t *document, yaml_node_t *mapping, co
         {
             return false;
         }
+
         if (strcmp(key, "path") == 0)
         {
             bit = 1;
@@ -102,18 +110,22 @@ static bool database_mapping(yaml_document_t *document, yaml_node_t *mapping, co
             {
                 return false;
             }
+
             config->busy_timeout_ms = (int)number;
         }
         else
         {
             return false;
         }
+
         if ((seen & bit) != 0)
         {
             return false;
         }
+
         seen |= bit;
     }
+
     return true;
 }
 
@@ -142,11 +154,13 @@ bool config_load_file(const char *path, const AppConfig *base, AppConfig *output
     {
         return fail(error, error_size, "Nao foi possivel abrir o arquivo de configuracao.");
     }
+
     if (!yaml_parser_initialize(&parser))
     {
         (void)fclose(file);
         return fail(error, error_size, "Memoria insuficiente para ler YAML.");
     }
+
     yaml_parser_set_input_file(&parser, file);
     if (!yaml_parser_load(&parser, &document))
     {
@@ -154,7 +168,10 @@ bool config_load_file(const char *path, const AppConfig *base, AppConfig *output
         (void)fclose(file);
         return fail(error, error_size, "YAML invalido.");
     }
+
     candidate = *base;
+    /* Parsing and path resolution affect only this candidate, including overlays
+     * where base and output point to the same AppConfig. */
     root = yaml_document_get_root_node(&document);
     if (root == NULL || root->type != YAML_MAPPING_NODE)
     {
@@ -172,9 +189,11 @@ bool config_load_file(const char *path, const AppConfig *base, AppConfig *output
                 valid = false;
                 break;
             }
+
             seen = true;
         }
     }
+
     yaml_document_delete(&document);
     if (valid)
     {
@@ -188,21 +207,25 @@ bool config_load_file(const char *path, const AppConfig *base, AppConfig *output
             yaml_document_delete(&extra);
         }
     }
+
     yaml_parser_delete(&parser);
     if (fclose(file) != 0)
     {
         valid = false;
     }
+
     if (!valid || candidate.database_path[0] == '\0' || candidate.busy_timeout_ms < 0 ||
         candidate.busy_timeout_ms > 60000)
     {
         return fail(error, error_size,
                     "Configuracao invalida: verifique chaves, valores e documentos YAML.");
     }
+
     *output = candidate;
     if (error != NULL && error_size > 0)
     {
         error[0] = '\0';
     }
+
     return true;
 }

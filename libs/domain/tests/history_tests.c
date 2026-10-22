@@ -102,6 +102,7 @@ static void test_history_growth(void)
     {
         CHECK(worker_set_salary(worker, (SalaryChange){year, 1, year}) == WORKFORCE_OK);
     }
+
     CHECK(worker->salary_count == 100);
     check_salary(worker, 2050, 12, 2050);
     CHECK(team_remove(&team, id) == WORKFORCE_OK);
