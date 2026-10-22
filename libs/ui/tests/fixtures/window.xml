@@ -1,0 +1,8 @@
+<Window text="Test window">
+  <VStack gap="0">
+    <Grid columns="2"><Label text="LEFT"/><Label text="RIGHT &amp; XML"/></Grid>
+    <Include source="fragment.xml"/>
+    <HStack><Button text="Count" command="count"/><Button text="Exit" command="quit"/></HStack>
+    <Table text="Rows" bind="rows" height="4"/>
+  </VStack>
+</Window>

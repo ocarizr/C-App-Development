@@ -52,3 +52,21 @@ if(UNIX)
 endif()
 # Analyze our adapters, not downloaded upstream implementation files.
 set_target_properties(workforce_sqlite workforce_yaml PROPERTIES C_CLANG_TIDY "")
+
+# XML is parsed by Expat; DTDs/entities are disabled by the UI adapter as well.
+set(EXPAT_BUILD_TOOLS OFF)
+set(EXPAT_BUILD_EXAMPLES OFF)
+set(EXPAT_BUILD_TESTS OFF)
+set(EXPAT_BUILD_DOCS OFF)
+set(EXPAT_BUILD_PKGCONFIG OFF)
+set(EXPAT_ENABLE_INSTALL OFF)
+set(EXPAT_SHARED_LIBS OFF)
+set(EXPAT_DTD OFF)
+FetchContent_Declare(expat_source
+    URL https://github.com/libexpat/libexpat/releases/download/R_2_9_0/expat-2.9.0.tar.gz
+    URL_HASH SHA256=16afbb9cefead2aa278105cf27d9f597bde7fbf3dbb85015857ca7ca6a4e89ba)
+FetchContent_MakeAvailable(expat_source)
+set_target_properties(expat PROPERTIES C_CLANG_TIDY "")
+if(WIN32)
+    target_compile_definitions(expat PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()

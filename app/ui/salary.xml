@@ -1,0 +1,16 @@
+<Window text="Historico salarial | Vigencias mensais">
+  <VStack>
+    <Include source="shared/worker.xml"/>
+    <Table text="Vigencias em ordem cronologica" bind="history" height="12"/>
+    <Grid columns="3">
+      <Input text="Ano de vigencia" bind="salary.year" maxLength="4"/>
+      <Input text="Mes de vigencia" bind="salary.month" maxLength="2"/>
+      <Input text="Salario vigente" bind="salary.amount" maxLength="24"/>
+    </Grid>
+    <HStack>
+      <Button text="Cadastrar/corrigir vigencia" command="salary.save"/>
+      <Button text="Excluir vigencia do ano/mes" command="salary.delete"/>
+    </HStack>
+    <Label text="O salario vale ate a proxima vigencia. Antes da primeira mudanca vale o salario inicial."/>
+  </VStack>
+</Window>

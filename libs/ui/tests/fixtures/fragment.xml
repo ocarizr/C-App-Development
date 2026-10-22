@@ -1,0 +1,1 @@
+<Fragment><Input text="Name" bind="name" maxLength="10"/></Fragment>
