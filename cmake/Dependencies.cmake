@@ -40,5 +40,15 @@ target_compile_definitions(workforce_yaml PUBLIC YAML_DECLARE_STATIC PRIVATE
 if(MSVC)
     target_compile_definitions(workforce_yaml PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
+if(UNIX)
+    # libyaml 0.2.5 calls the POSIX strdup API. Strict C11 hides its declaration
+    # on glibc unless POSIX.1-2008 is requested before including system headers.
+    target_compile_definitions(workforce_yaml PRIVATE _POSIX_C_SOURCE=200809L)
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        # Older GCC otherwise accepts an implicit int return, causing pointer
+        # truncation and crashes when configuration parsing runs on 64-bit Linux.
+        target_compile_options(workforce_yaml PRIVATE -Werror=implicit-function-declaration)
+    endif()
+endif()
 # Analyze our adapters, not downloaded upstream implementation files.
 set_target_properties(workforce_sqlite workforce_yaml PROPERTIES C_CLANG_TIDY "")
