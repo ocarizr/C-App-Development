@@ -1,6 +1,7 @@
 #include "console.h"
 #include "money.h"
 #include "workforce.h"
+#include "workforce_export.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -183,7 +184,8 @@ static void print_worker(Console *console, const Worker *worker)
     for (j = 0; j < worker->contract_count; ++j)
     {
         const HourContract *contract = &worker->contracts[j];
-        fprintf(console->output, "  Contrato %zu | %04d-%02d | %d horas | Valor/hora: ", j + 1,
+        fprintf(console->output,
+                "  Contrato ID %" PRId64 " | %04d-%02d | %d horas | Valor/hora: ", contract->id,
                 contract->year, contract->month, contract->hours);
         print_money(console->output, contract->hourly_rate_cents);
         fputc('\n', console->output);
@@ -349,10 +351,15 @@ static int manage_worker(Console *console, int option)
         print_status(console, status);
         return 1;
     }
-    if (option == 3)
+    if (option == 3 || option == 11)
     {
-        HourContract contract;
+        HourContract contract = {0};
         int64_t year, month, hours;
+        int64_t contract_id = 0;
+        if (option == 11 && !read_number(console, "ID do contrato: ", 1, INT64_MAX, &contract_id))
+        {
+            return 0;
+        }
         if (!read_number(console, "Ano: ", 1, 9999, &year) ||
             !read_number(console, "Mes: ", 1, 12, &month) ||
             !read_number(console, "Horas: ", 1, INT_MAX, &hours) ||
@@ -363,18 +370,26 @@ static int manage_worker(Console *console, int option)
         contract.year = (int)year;
         contract.month = (int)month;
         contract.hours = (int)hours;
-        print_status(console, store_add_contract(console->store, (uint32_t)id, contract));
+        status = option == 3
+                     ? store_add_contract(console->store, (uint32_t)id, contract, &contract_id)
+                     : store_update_contract(console->store, (uint32_t)id, contract_id, contract);
+        if (status == WORKFORCE_OK)
+        {
+            fprintf(console->output, "Contrato salvo. ID: %" PRId64 "\n", contract_id);
+        }
+        else
+        {
+            print_status(console, status);
+        }
     }
     else if (option == 4)
     {
         int64_t number;
-        if (!read_number(console, "Numero do contrato (consulte a listagem): ", 1, INT_MAX,
-                         &number))
+        if (!read_number(console, "ID do contrato (consulte a listagem): ", 1, INT64_MAX, &number))
         {
             return 0;
         }
-        print_status(console,
-                     store_remove_contract(console->store, (uint32_t)id, (size_t)(number - 1)));
+        print_status(console, store_remove_contract(console->store, (uint32_t)id, number));
     }
     else
     {
@@ -385,32 +400,92 @@ static int manage_worker(Console *console, int option)
 
 static void print_payroll(Console *console, const Team *team, int year, int month)
 {
-    int64_t total = 0;
-    size_t i;
-    /* Check the full team before printing a partial payroll. */
-    for (i = 0; i < team->count; ++i)
+    PayrollReport report = {0};
+    ReportFilter filter = {0};
+    WorkforceStatus status = report_build(team, year, month, &filter, &report);
+    if (status != WORKFORCE_OK)
     {
-        int64_t income;
-        WorkforceStatus status = worker_income(&team->workers[i], (int)year, (int)month, &income);
-        if (status != WORKFORCE_OK || total > INT64_MAX - income)
+        print_status(console, status);
+    }
+    else if (report_write_text(console->output, &report) != WORKFORCE_OK)
+    {
+        fputs("Falha ao escrever o relatorio.\n", console->output);
+    }
+    report_dispose(&report);
+}
+
+static int filtered_report(Console *console, int export_csv)
+{
+    int64_t year, month;
+    char department[WORKFORCE_NAME_SIZE];
+    char level[WORKFORCE_NAME_SIZE];
+    char path[256];
+    ReportFilter filter = {0};
+    PayrollReport report = {0};
+    Team team = {0};
+    WorkforceStatus status;
+    if (!read_number(console, "Ano: ", 1, 9999, &year) ||
+        !read_number(console, "Mes: ", 1, 12, &month) ||
+        !read_text(console, "Departamento (* para todos): ", department, sizeof(department)))
+    {
+        return 0;
+    }
+    if (strcmp(department, "*") != 0)
+    {
+        memcpy(filter.department, department, strlen(department) + 1);
+    }
+    for (;;)
+    {
+        if (!read_text(console, "Nivel (Trainee/Junior/MidLevel/Senior ou * para todos): ", level,
+                       sizeof(level)))
         {
-            print_status(console, status == WORKFORCE_OK ? WORKFORCE_OVERFLOW : status);
-            return;
+            return 0;
         }
-        total += income;
+        if (strcmp(level, "*") == 0)
+        {
+            break;
+        }
+        if (worker_level_parse(level, &filter.level) == WORKFORCE_OK)
+        {
+            filter.has_level = true;
+            break;
+        }
+        fputs("Nivel invalido.\n", console->output);
     }
-    fprintf(console->output, "Remuneracao de %04d-%02d:\n", (int)year, (int)month);
-    for (i = 0; i < team->count; ++i)
+    if (export_csv &&
+        !read_text(console, "Novo arquivo CSV (nao sobrescreve existentes): ", path, sizeof(path)))
     {
-        int64_t income = 0;
-        (void)worker_income(&team->workers[i], (int)year, (int)month, &income);
-        fprintf(console->output, "%s: ", team->workers[i].profile.name);
-        print_money(console->output, income);
-        fputc('\n', console->output);
+        return 0;
     }
-    fputs("Total da equipe: ", console->output);
-    print_money(console->output, total);
-    fputc('\n', console->output);
+    status = store_list(console->store, &team);
+    if (status == WORKFORCE_OK)
+    {
+        status = report_build(&team, (int)year, (int)month, &filter, &report);
+    }
+    team_dispose(&team);
+    if (status != WORKFORCE_OK)
+    {
+        print_status(console, status);
+    }
+    else if (export_csv)
+    {
+        status = report_export_csv(path, &report);
+        if (status == WORKFORCE_OK)
+        {
+            fprintf(console->output, "Relatorio exportado para %s\n", path);
+        }
+        else
+        {
+            fputs("Nao foi possivel exportar. Use um arquivo novo em um diretorio gravavel.\n",
+                  console->output);
+        }
+    }
+    else if (report_write_text(console->output, &report) != WORKFORCE_OK)
+    {
+        fputs("Falha ao escrever o relatorio.\n", console->output);
+    }
+    report_dispose(&report);
+    return 1;
 }
 
 static int payroll(Console *console)
@@ -448,13 +523,14 @@ int console_run(FILE *input, FILE *output, WorkforceStore *store)
     while (running)
     {
         int64_t option;
-        fputs(
-            "\n1 Cadastrar funcionario\n2 Listar equipe e contratos\n3 Adicionar contrato\n"
-            "4 Remover contrato\n5 Consultar remuneracao mensal\n6 Remover funcionario\n"
-            "7 Consultar funcionario e historico\n8 Editar perfil\n"
-            "9 Cadastrar/corrigir salario por competencia\n10 Remover vigencia salarial\n0 Sair\n",
-            output);
-        if (!read_number(&console, "Opcao: ", 0, 10, &option))
+        fputs("\n1 Cadastrar funcionario\n2 Listar equipe e contratos\n3 Adicionar contrato\n"
+              "4 Remover contrato\n5 Consultar remuneracao mensal\n6 Remover funcionario\n"
+              "7 Consultar funcionario e historico\n8 Editar perfil\n"
+              "9 Cadastrar/corrigir salario por competencia\n10 Remover vigencia salarial\n"
+              "11 Editar contrato por ID\n12 Relatorio mensal filtrado\n13 Exportar relatorio "
+              "CSV\n0 Sair\n",
+              output);
+        if (!read_number(&console, "Opcao: ", 0, 13, &option))
         {
             break;
         }
@@ -484,6 +560,7 @@ int console_run(FILE *input, FILE *output, WorkforceStore *store)
         case 3:
         case 4:
         case 6:
+        case 11:
             running = manage_worker(&console, (int)option);
             break;
         case 5:
@@ -494,6 +571,10 @@ int console_run(FILE *input, FILE *output, WorkforceStore *store)
         case 9:
         case 10:
             running = history_action(&console, (int)option);
+            break;
+        case 12:
+        case 13:
+            running = filtered_report(&console, option == 13);
             break;
         }
     }

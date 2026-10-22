@@ -44,3 +44,4 @@ Thumbs.db
 *.sqlite
 *.sqlite3
 *.local.yaml
+*.csv

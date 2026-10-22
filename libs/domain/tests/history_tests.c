@@ -19,7 +19,7 @@ static void test_timeline_and_profile(void)
 {
     Worker worker = {0};
     WorkerProfile data = profile();
-    HourContract contract = {2026, 10, 10, 100};
+    HourContract contract = {2026, 10, 10, 100, 0};
     int64_t income;
     CHECK(worker_init(&worker, 42, &data) == WORKFORCE_OK);
     CHECK(worker_set_salary(&worker, (SalaryChange){2027, 1, 450000}) == WORKFORCE_OK);
@@ -63,7 +63,7 @@ static void test_overflow_and_validation(void)
 {
     Worker worker = {0};
     WorkerProfile data = profile();
-    HourContract contract = {2026, 10, 1, 10};
+    HourContract contract = {2026, 10, 1, 10, 0};
     int64_t value = 17;
     data.salary_cents = INT64_MAX;
     CHECK(worker_init(&worker, 1, &data) == WORKFORCE_OK);

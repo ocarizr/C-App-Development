@@ -29,9 +29,12 @@ WorkforceStatus store_update_profile(WorkforceStore *store, uint32_t id,
                                      const WorkerProfile *profile);
 WorkforceStatus store_set_salary(WorkforceStore *store, uint32_t id, SalaryChange change);
 WorkforceStatus store_remove_salary(WorkforceStore *store, uint32_t id, int year, int month);
-WorkforceStatus store_add_contract(WorkforceStore *store, uint32_t worker_id,
-                                   HourContract contract);
-/* Index is zero-based in contract ID order, matching the console's current listing. */
-WorkforceStatus store_remove_contract(WorkforceStore *store, uint32_t worker_id, size_t index);
+WorkforceStatus store_add_contract(WorkforceStore *store, uint32_t worker_id, HourContract contract,
+                                   int64_t *contract_id);
+WorkforceStatus store_update_contract(WorkforceStore *store, uint32_t worker_id,
+                                      int64_t contract_id, HourContract replacement);
+/* IDs are persistent SQLite identities; all mutations are scoped to the owner. */
+WorkforceStatus store_remove_contract(WorkforceStore *store, uint32_t worker_id,
+                                      int64_t contract_id);
 
 #endif

@@ -96,9 +96,9 @@ static void test_contracts(void)
 {
     Worker worker = {0};
     WorkerProfile data = profile();
-    HourContract october = {2026, 10, 10, 2550};
-    HourContract november = {2026, 11, 3, 1000};
-    HourContract other_year = {2025, 10, 1, 100};
+    HourContract october = {2026, 10, 10, 2550, 0};
+    HourContract november = {2026, 11, 3, 1000, 0};
+    HourContract other_year = {2025, 10, 1, 100, 0};
     HourContract invalid = october;
     int64_t income = -1;
     int i;
@@ -128,11 +128,11 @@ static void test_contracts(void)
     invalid.hourly_rate_cents = -1;
     CHECK(worker_add_contract(&worker, invalid) == WORKFORCE_INVALID);
     CHECK(worker.contract_count == 3);
-    CHECK(worker_remove_contract(&worker, 1) == WORKFORCE_OK);
+    CHECK(worker_remove_contract(&worker, 2) == WORKFORCE_OK);
     CHECK(worker.contract_count == 2 && worker.contracts[1].year == 2025);
-    CHECK(worker_remove_contract(&worker, 0) == WORKFORCE_OK);
-    CHECK(worker_remove_contract(&worker, 0) == WORKFORCE_OK);
-    CHECK(worker_remove_contract(&worker, 0) == WORKFORCE_NOT_FOUND);
+    CHECK(worker_remove_contract(&worker, 1) == WORKFORCE_OK);
+    CHECK(worker_remove_contract(&worker, 3) == WORKFORCE_OK);
+    CHECK(worker_remove_contract(&worker, 1) == WORKFORCE_NOT_FOUND);
     for (i = 0; i < 100; ++i)
     {
         CHECK(worker_add_contract(&worker, october) == WORKFORCE_OK);
@@ -155,7 +155,7 @@ static void test_overflow(void)
 {
     Worker worker;
     WorkerProfile data = profile();
-    HourContract contract = {2026, 10, 2, INT64_MAX};
+    HourContract contract = {2026, 10, 2, INT64_MAX, 0};
     int64_t income;
     data.salary_cents = 0;
     CHECK(worker_init(&worker, 1, &data) == WORKFORCE_OK);
@@ -180,7 +180,7 @@ static void test_team(void)
 {
     Team team = {0};
     WorkerProfile data = profile();
-    HourContract contract = {2026, 10, 5, 100};
+    HourContract contract = {2026, 10, 5, 100, 0};
     uint32_t id = 0;
     uint32_t expected;
     CHECK(team_find(&team, 1) == NULL);

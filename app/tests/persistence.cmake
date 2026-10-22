@@ -13,7 +13,7 @@ file(WRITE "${WORK_DIR}/read.txt" "7\n1\n5\n2026\n10\n5\n2026\n11\n5\n2027\n1\n0
 execute_process(COMMAND "${APP}" --config app.yaml --config overlay.yaml WORKING_DIRECTORY "${WORK_DIR}"
     INPUT_FILE "${WORK_DIR}/read.txt" OUTPUT_VARIABLE output ERROR_VARIABLE error RESULT_VARIABLE result)
 if(NOT result EQUAL 0 OR NOT output MATCHES "Conexao com o banco de dados realizada com sucesso" OR
-   NOT output MATCHES "Ana Maria: 3255.00" OR NOT output MATCHES "Contrato 1" OR
+   NOT output MATCHES "Ana Maria: 3255.00" OR NOT output MATCHES "Contrato ID 1" OR
    NOT output MATCHES "Ana Maria: 4000.00" OR NOT output MATCHES "Ana Maria: 4500.00" OR
    NOT output MATCHES "2026-11: 4000.00")
     message(FATAL_ERROR "Data did not survive process restart: ${result}\n${output}\n${error}")

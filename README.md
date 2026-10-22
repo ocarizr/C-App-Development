@@ -17,12 +17,15 @@ Os executáveis de teste têm seus próprios pontos de entrada.
   nível de experiência e salário mensal.
 - Identificar funcionários por IDs persistentes, sem reutilizar IDs
   removidos.
-- Adicionar e remover contratos por funcionário, com ano, mês, horas e valor/hora.
+- Adicionar, editar e remover contratos por funcionário e ID estável, com ano,
+  mês, horas e valor/hora.
 - Consultar a remuneração de cada funcionário e o total da equipe em um mês:
   **salário base + soma dos contratos daquele ano e mês**.
 - Remover funcionários e liberar seus contratos.
 - Consultar um funcionário por ID, editar seu perfil e visualizar seu histórico salarial.
 - Cadastrar, corrigir e remover salários com competência de vigência.
+- Filtrar relatórios mensais por departamento e nível, com subtotais por
+  departamento e exportação CSV.
 
 Os dados ficam em um **banco SQLite local**, com gravação imediata de funcionários
 e contratos. Ao reiniciar, a aplicação consulta os registros persistidos.
@@ -151,8 +154,47 @@ do esquema 1 para o 2 em uma transação, preservando os dados existentes.
   caracteres quando há acentos em UTF-8.
 - Idades: 1 a 150; anos: 1 a 9999; meses: 1 a 12; horas: inteiro positivo.
   Salário e valor/hora podem ser zero, mas nunca negativos.
-- Para remover um contrato, consulte seu número na opção de listagem.
-  Esses números começam em 1 e mudam após uma remoção.
+- Para editar ou remover um contrato, use seu **ID** mostrado na listagem.
+  IDs são persistentes e não mudam quando outro contrato é excluído.
+
+### Contratos por ID e relatórios
+
+| Opção | Ação |
+| --- | --- |
+| 3 | Adicionar contrato e mostrar o ID atribuído pelo banco |
+| 4 | Remover pelo ID do funcionário e ID do contrato |
+| 11 | Editar ano, mês, horas e valor/hora, preservando o ID |
+| 12 | Consultar relatório mensal com filtros |
+| 13 | Exportar o relatório filtrado para um novo arquivo CSV |
+
+Na edição, informe todos os novos dados do contrato. A alteração é validada
+contra o salário vigente e os demais contratos do mês de destino; um erro não
+modifica o contrato. O ID do funcionário também é exigido, para que um contrato
+de outra pessoa não seja alterado por engano. Contratos existentes já possuíam
+IDs no SQLite: eles passam a ser expostos sem migrar ou recriar dados.
+
+Nos relatórios, informe ano e mês, departamento e nível. Use `*` para deixar
+cada filtro livre. Os filtros são combinados com **E** e usam o perfil atual do
+funcionário; departamento é uma correspondência exata, incluindo maiúsculas e
+minúsculas. Exemplo: `Engineering` + `Senior` inclui apenas seniors desse
+departamento. A remuneração usa o histórico salarial e os contratos do mês
+consultado. Esta etapa inclui filtros de departamento e nível.
+
+O resultado contém os funcionários selecionados, salário vigente, valor dos
+contratos, remuneração, subtotais por departamento e total geral. Funcionários
+são ordenados por departamento e ID. Uma seleção vazia produz totais zero.
+Todos os totais consideram somente os registros que passaram pelos filtros.
+
+O CSV usa as colunas `type,year,month,worker_id,name,profession,department,level,worker_count,salary,contracts,total`.
+Os tipos de linha são `WORKER`, `DEPARTMENT` e `TOTAL`; valores monetários usam
+ponto decimal e duas casas. Textos são delimitados por aspas, com escape de
+aspas internas e suporte a vírgulas/quebras de linha. Textos que poderiam ser
+interpretados como fórmulas recebem um apóstrofo de proteção. Os bytes dos textos
+armazenados são preservados, sem conversão de codificação.
+
+A exportação exige um arquivo novo, em um diretório existente e gravável; arquivos
+existentes não são sobrescritos. `*.csv` é ignorado pelo Git. O caminho informado
+é relativo ao diretório atual do processo, como outros caminhos de saída.
 
 Entradas inválidas são solicitadas novamente. Falhas do domínio são informadas
 sem efetivar a operação. Valores que excederiam os limites de `int64_t` em
@@ -165,6 +207,7 @@ app/                main.c, console e testes do aplicativo
 libs/domain/        modelos, regras, dinheiro e testes do domínio
 libs/config/        leitura e sobreposição de YAML, com testes próprios
 libs/infra/         repositório SQLite e testes próprios
+libs/export/        apresentação de relatórios em texto/CSV e testes próprios
 tests/support/      utilitários compartilhados dos testes
 cmake/              dependências estáticas com versões e hashes fixos
 app.yaml            configuração local de exemplo
@@ -175,6 +218,10 @@ app.yaml            configuração local de exemplo
 libyaml. `workforce_infra` implementa o repositório usando SQLite e recebe as
 opções por injeção. `main.c` compõe as bibliotecas e notifica o usuário sobre a conexão.
 `workforce_console` recebe `FILE *` para entrada/saída e uma conexão de repositório.
+`report_build`, no core, seleciona e agrega um snapshot da equipe;
+`workforce_export` apenas apresenta/exporta esse resultado, sem consultar SQLite
+ou recalcular regras de negócio. A biblioteca futura de UI poderá reutilizar
+os mesmos relatórios.
 As implementações ficam em `.c`; os `.h` contêm apenas
 declarações, tipos e contratos públicos, protegidos contra inclusão repetida.
 
@@ -221,6 +268,12 @@ continuam ativas em Release, independentemente de `NDEBUG`.
 - **Histórico na infraestrutura:** persistência de edições, migração de bancos
   antigos, rollback de migração/escrita, bloqueios e exclusão em cascata.
   O fluxo entre processos também verifica edição e correção/remoção do histórico.
+- **Contratos por ID:** identidade após exclusão/reabertura, mudança de competência,
+  bloqueios, falhas de escrita, overflow e proteção contra alteração de outro funcionário.
+- **Relatórios/exportação:** filtros individuais e combinados, histórico salarial,
+  somas por departamento, ordenação, resultado vazio, overflow, CSV e preservação
+  de arquivos existentes. Um teste entre processos edita um contrato e exporta o
+  relatório filtrado pelo console.
 
 A evolução do histórico começou pelo teste de comportamento falhando, seguido
 da implementação e validação das regras, mantendo os testes de regressão existentes.
@@ -320,7 +373,8 @@ A aplicação já gerencia múltiplos funcionários, remuneração mensal e pers
 SQLite. A separação em bibliotecas permite adicionar uma UI de terminal depois,
 mantendo o domínio, a configuração e o armazenamento independentes da apresentação.
 Edição de perfis e histórico salarial por competência já estão implementados.
-Relatórios, edição de contratos e a futura UI de terminal continuam como extensões.
+Contratos editáveis por ID e relatórios filtrados/exportáveis também estão
+implementados. A futura UI de terminal fica para a próxima etapa.
 As decisões desta etapa estão em [`docs/persistence.md`](docs/persistence.md).
 
 Os exercícios de HackerRank/VanHack e os binários antigos foram removidos da
