@@ -63,7 +63,7 @@ static void test_full_session(void)
 static void test_bad_input(void)
 {
     char output[20000];
-    session("banana\n7\n1\n\nAna\nabc\n0\n30\nDeveloper\nEngineering\n"
+    session("banana\n11\n1\n\nAna\nabc\n0\n30\nDeveloper\nEngineering\n"
             "senior\nSenior\nnan\n-1\n1,50\n1.001\n1000.50\n"
             "3\n999\n4\n1\n1\n6\n999\n0\n",
             output, sizeof(output));
@@ -111,12 +111,43 @@ static void test_payroll_overflow(void)
     CHECK(strstr(output, "Total da equipe:") == NULL);
 }
 
+static void test_history_and_profile(void)
+{
+    char output[40000];
+    session("1\nAna Silva\n30\nDeveloper\nEngineering\nJunior\n3000\n"
+            "9\n1\n2027\n1\n4500\n9\n1\n2026\n10\n4000\n"
+            "9\n1\n2026\n10\n4200\n"
+            "8\n1\n1\nAna Maria\n8\n1\n2\n31\n8\n1\n3\nLead Developer\n"
+            "8\n1\n4\nPlatform\n8\n1\n5\ninvalid\nSenior\n7\n1\n"
+            "5\n2026\n9\n5\n2026\n10\n5\n2027\n1\n"
+            "10\n1\n2026\n10\n5\n2026\n10\n7\n999\n0\n",
+            output, sizeof(output));
+    CHECK(strstr(output, "Ana Maria | 31 anos | Senior Lead Developer | Platform") != NULL);
+    CHECK(strstr(output, "2026-10: 4200.00") != NULL);
+    CHECK(strstr(output, "2027-01: 4500.00") != NULL);
+    CHECK(strstr(output, "Ana Maria: 3000.00") != NULL);
+    CHECK(strstr(output, "Ana Maria: 4200.00") != NULL);
+    CHECK(strstr(output, "Ana Maria: 4500.00") != NULL);
+    CHECK(strstr(output, "Nivel invalido.") != NULL);
+    CHECK(strstr(output, "Registro nao encontrado.") != NULL);
+    session("1\nAna\n30\nDeveloper\nEngineering\nJunior\n3000\n8\n1\n0\n7\n1\n0\n", output,
+            sizeof(output));
+    CHECK(strstr(output, "Nenhuma alteracao salarial cadastrada.") != NULL);
+    /* EOF cancels profile and salary edits; sanitizer runs verify snapshot cleanup. */
+    session("1\nAna\n30\nDeveloper\nEngineering\nJunior\n3000\n8\n1\n1\n", output, sizeof(output));
+    CHECK(strstr(output, "Sessao encerrada.") != NULL);
+    session("1\nAna\n30\nDeveloper\nEngineering\nJunior\n3000\n9\n1\n2026\n", output,
+            sizeof(output));
+    CHECK(strstr(output, "Sessao encerrada.") != NULL);
+}
+
 int main(void)
 {
     test_full_session();
     test_bad_input();
     test_long_line_and_eof();
     test_payroll_overflow();
+    test_history_and_profile();
     CHECK(console_run(NULL, stdout, NULL) == EXIT_FAILURE);
     CHECK(console_run(stdin, NULL, NULL) == EXIT_FAILURE);
     puts("Console tests passed.");

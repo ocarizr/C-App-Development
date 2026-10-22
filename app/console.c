@@ -171,32 +171,166 @@ static int register_worker(Console *console)
     return 1;
 }
 
+static void print_worker(Console *console, const Worker *worker)
+{
+    size_t j;
+    fprintf(console->output,
+            "ID %" PRIu32 " | %s | %d anos | %s %s | %s | Salario inicial: ", worker->id,
+            worker->profile.name, worker->profile.age, worker_level_name(worker->profile.level),
+            worker->profile.profession, worker->profile.department);
+    print_money(console->output, worker->profile.salary_cents);
+    fputc('\n', console->output);
+    for (j = 0; j < worker->contract_count; ++j)
+    {
+        const HourContract *contract = &worker->contracts[j];
+        fprintf(console->output, "  Contrato %zu | %04d-%02d | %d horas | Valor/hora: ", j + 1,
+                contract->year, contract->month, contract->hours);
+        print_money(console->output, contract->hourly_rate_cents);
+        fputc('\n', console->output);
+    }
+}
+
 static void list_workers(Console *console, const Team *team)
 {
-    size_t i;
     if (team->count == 0)
     {
         fputs("Nenhum funcionario cadastrado.\n", console->output);
     }
-    for (i = 0; i < team->count; ++i)
+    for (size_t i = 0; i < team->count; ++i)
     {
-        const Worker *worker = &team->workers[i];
-        size_t j;
-        fprintf(console->output,
-                "ID %" PRIu32 " | %s | %d anos | %s %s | %s | Salario: ", worker->id,
-                worker->profile.name, worker->profile.age, worker_level_name(worker->profile.level),
-                worker->profile.profession, worker->profile.department);
-        print_money(console->output, worker->profile.salary_cents);
+        print_worker(console, &team->workers[i]);
+    }
+}
+
+static void print_history(Console *console, const Worker *worker)
+{
+    fputs("Historico salarial (vigencia a partir da competencia):\n", console->output);
+    fputs("  Antes da primeira alteracao: ", console->output);
+    print_money(console->output, worker->profile.salary_cents);
+    fputc('\n', console->output);
+    if (worker->salary_count == 0)
+    {
+        fputs("  Nenhuma alteracao salarial cadastrada.\n", console->output);
+    }
+    for (size_t i = 0; i < worker->salary_count; ++i)
+    {
+        const SalaryChange *change = &worker->salary_changes[i];
+        fprintf(console->output, "  %04d-%02d: ", change->year, change->month);
+        print_money(console->output, change->salary_cents);
         fputc('\n', console->output);
-        for (j = 0; j < worker->contract_count; ++j)
+    }
+}
+
+static int edit_profile(Console *console, const Worker *worker)
+{
+    WorkerProfile profile = worker->profile;
+    int64_t field;
+    int64_t age;
+    char level[WORKFORCE_NAME_SIZE];
+    fputs("Campo: 1 Nome | 2 Idade | 3 Cargo | 4 Departamento | 5 Nivel | 0 Cancelar\n",
+          console->output);
+    if (!read_number(console, "Campo: ", 0, 5, &field))
+    {
+        return 0;
+    }
+    switch (field)
+    {
+    case 0:
+        return 1;
+    case 1:
+        if (!read_text(console, "Novo nome: ", profile.name, sizeof(profile.name)))
         {
-            const HourContract *contract = &worker->contracts[j];
-            fprintf(console->output, "  Contrato %zu | %04d-%02d | %d horas | Valor/hora: ", j + 1,
-                    contract->year, contract->month, contract->hours);
-            print_money(console->output, contract->hourly_rate_cents);
-            fputc('\n', console->output);
+            return 0;
+        }
+        break;
+    case 2:
+        if (!read_number(console, "Nova idade: ", 1, 150, &age))
+        {
+            return 0;
+        }
+        profile.age = (int)age;
+        break;
+    case 3:
+        if (!read_text(console, "Novo cargo: ", profile.profession, sizeof(profile.profession)))
+        {
+            return 0;
+        }
+        break;
+    case 4:
+        if (!read_text(console, "Novo departamento: ", profile.department,
+                       sizeof(profile.department)))
+        {
+            return 0;
+        }
+        break;
+    case 5:
+        for (;;)
+        {
+            if (!read_text(console, "Novo nivel (Trainee/Junior/MidLevel/Senior): ", level,
+                           sizeof(level)))
+            {
+                return 0;
+            }
+            if (worker_level_parse(level, &profile.level) == WORKFORCE_OK)
+            {
+                break;
+            }
+            fputs("Nivel invalido.\n", console->output);
+        }
+        break;
+    }
+    print_status(console, store_update_profile(console->store, worker->id, &profile));
+    return 1;
+}
+
+static int history_action(Console *console, int option)
+{
+    int64_t id;
+    int running = 1;
+    Worker worker = {0};
+    WorkforceStatus status;
+    if (!read_number(console, "ID do funcionario: ", 1, UINT32_MAX, &id))
+    {
+        return 0;
+    }
+    status = store_find(console->store, (uint32_t)id, &worker);
+    if (status != WORKFORCE_OK)
+    {
+        print_status(console, status);
+        return 1;
+    }
+    print_worker(console, &worker);
+    if (option == 8)
+    {
+        running = edit_profile(console, &worker);
+    }
+    else
+    {
+        print_history(console, &worker);
+        if (option == 9 || option == 10)
+        {
+            int64_t year, month;
+            SalaryChange change = {0};
+            if (!read_number(console, "Ano de vigencia: ", 1, 9999, &year) ||
+                !read_number(console, "Mes de vigencia: ", 1, 12, &month) ||
+                (option == 9 && !read_money(console, "Salario a partir desta competencia: ",
+                                            &change.salary_cents)))
+            {
+                running = 0;
+            }
+            else
+            {
+                change.year = (int)year;
+                change.month = (int)month;
+                status = option == 9 ? store_set_salary(console->store, worker.id, change)
+                                     : store_remove_salary(console->store, worker.id, change.year,
+                                                           change.month);
+                print_status(console, status);
+            }
         }
     }
+    worker_dispose(&worker);
+    return running;
 }
 
 static int manage_worker(Console *console, int option)
@@ -314,10 +448,13 @@ int console_run(FILE *input, FILE *output, WorkforceStore *store)
     while (running)
     {
         int64_t option;
-        fputs("\n1 Cadastrar funcionario\n2 Listar equipe e contratos\n3 Adicionar contrato\n"
-              "4 Remover contrato\n5 Consultar remuneracao mensal\n6 Remover funcionario\n0 Sair\n",
-              output);
-        if (!read_number(&console, "Opcao: ", 0, 6, &option))
+        fputs(
+            "\n1 Cadastrar funcionario\n2 Listar equipe e contratos\n3 Adicionar contrato\n"
+            "4 Remover contrato\n5 Consultar remuneracao mensal\n6 Remover funcionario\n"
+            "7 Consultar funcionario e historico\n8 Editar perfil\n"
+            "9 Cadastrar/corrigir salario por competencia\n10 Remover vigencia salarial\n0 Sair\n",
+            output);
+        if (!read_number(&console, "Opcao: ", 0, 10, &option))
         {
             break;
         }
@@ -351,6 +488,12 @@ int console_run(FILE *input, FILE *output, WorkforceStore *store)
             break;
         case 5:
             running = payroll(&console);
+            break;
+        case 7:
+        case 8:
+        case 9:
+        case 10:
+            running = history_action(&console, (int)option);
             break;
         }
     }

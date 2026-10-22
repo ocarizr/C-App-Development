@@ -83,8 +83,144 @@ void worker_dispose(Worker *worker)
     if (worker != NULL)
     {
         free(worker->contracts);
+        free(worker->salary_changes);
         *worker = (Worker){0};
     }
+}
+
+WorkforceStatus worker_update_profile(Worker *worker, const WorkerProfile *profile)
+{
+    Worker validated = {0};
+    WorkforceStatus status;
+    if (worker == NULL || worker->id == 0 || profile == NULL ||
+        profile->salary_cents != worker->profile.salary_cents)
+    {
+        return WORKFORCE_INVALID;
+    }
+    status = worker_init(&validated, worker->id, profile);
+    if (status == WORKFORCE_OK)
+    {
+        worker->profile = validated.profile;
+    }
+    return status;
+}
+
+WorkforceStatus worker_salary_at(const Worker *worker, int year, int month, int64_t *cents)
+{
+    if (worker == NULL || worker->id == 0 || cents == NULL || !valid_period(year, month))
+    {
+        return WORKFORCE_INVALID;
+    }
+    *cents = worker->profile.salary_cents;
+    for (size_t i = 0; i < worker->salary_count; ++i)
+    {
+        const SalaryChange *change = &worker->salary_changes[i];
+        if (change->year * 12 + change->month > year * 12 + month)
+        {
+            break;
+        }
+        *cents = change->salary_cents;
+    }
+    return WORKFORCE_OK;
+}
+
+static WorkforceStatus replace_history(Worker *worker, SalaryChange *changes, size_t count)
+{
+    Worker candidate = *worker;
+    candidate.salary_changes = changes;
+    candidate.salary_count = count;
+    for (size_t i = 0; i < worker->contract_count; ++i)
+    {
+        int64_t income;
+        WorkforceStatus status = worker_income(&candidate, worker->contracts[i].year,
+                                               worker->contracts[i].month, &income);
+        if (status != WORKFORCE_OK)
+        {
+            free(changes);
+            return status;
+        }
+    }
+    free(worker->salary_changes);
+    worker->salary_changes = changes;
+    worker->salary_count = count;
+    return WORKFORCE_OK;
+}
+
+WorkforceStatus worker_set_salary(Worker *worker, SalaryChange change)
+{
+    size_t index = 0;
+    size_t count;
+    size_t offset;
+    SalaryChange *changes;
+    if (worker == NULL || worker->id == 0 || !valid_period(change.year, change.month) ||
+        change.salary_cents < 0)
+    {
+        return WORKFORCE_INVALID;
+    }
+    while (index < worker->salary_count &&
+           worker->salary_changes[index].year * 12 + worker->salary_changes[index].month <
+               change.year * 12 + change.month)
+    {
+        ++index;
+    }
+    offset = index < worker->salary_count && worker->salary_changes[index].year == change.year &&
+                     worker->salary_changes[index].month == change.month
+                 ? 0
+                 : 1;
+    if (worker->salary_count >= SIZE_MAX / sizeof(*changes))
+    {
+        return WORKFORCE_OVERFLOW;
+    }
+    count = worker->salary_count + offset;
+    changes = malloc(count * sizeof(*changes));
+    if (changes == NULL)
+    {
+        return WORKFORCE_NO_MEMORY;
+    }
+    for (size_t i = 0; i < index; ++i)
+    {
+        changes[i] = worker->salary_changes[i];
+    }
+    changes[index] = change;
+    for (size_t i = index + 1; i < count; ++i)
+    {
+        changes[i] = worker->salary_changes[i - offset];
+    }
+    return replace_history(worker, changes, count);
+}
+
+WorkforceStatus worker_remove_salary(Worker *worker, int year, int month)
+{
+    size_t index = 0;
+    size_t count;
+    SalaryChange *changes = NULL;
+    if (worker == NULL || worker->id == 0 || !valid_period(year, month))
+    {
+        return WORKFORCE_INVALID;
+    }
+    while (index < worker->salary_count && (worker->salary_changes[index].year != year ||
+                                            worker->salary_changes[index].month != month))
+    {
+        ++index;
+    }
+    if (index == worker->salary_count)
+    {
+        return WORKFORCE_NOT_FOUND;
+    }
+    count = worker->salary_count - 1;
+    if (count > 0)
+    {
+        changes = malloc(count * sizeof(*changes));
+        if (changes == NULL)
+        {
+            return WORKFORCE_NO_MEMORY;
+        }
+        for (size_t i = 0; i < count; ++i)
+        {
+            changes[i] = worker->salary_changes[i < index ? i : i + 1];
+        }
+    }
+    return replace_history(worker, changes, count);
 }
 
 WorkforceStatus worker_add_contract(Worker *worker, HourContract contract)
@@ -155,7 +291,7 @@ WorkforceStatus worker_income(const Worker *worker, int year, int month, int64_t
     {
         return WORKFORCE_INVALID;
     }
-    total = worker->profile.salary_cents;
+    (void)worker_salary_at(worker, year, month, &total);
     for (i = 0; i < worker->contract_count; ++i)
     {
         const HourContract *contract = &worker->contracts[i];

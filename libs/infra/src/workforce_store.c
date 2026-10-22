@@ -118,13 +118,18 @@ static WorkforceStatus initialize_schema(WorkforceStore *store)
                 "hourly_rate_cents INTEGER NOT NULL CHECK(hourly_rate_cents >= 0)) STRICT;"
                 "CREATE INDEX contracts_worker_period ON contracts(worker_id,year,month);"
                 "PRAGMA application_id=1464226371; PRAGMA user_version=1;");
+            if (status == WORKFORCE_OK)
+            {
+                version = 1;
+            }
         }
         else if (status == WORKFORCE_OK)
         {
             status = WORKFORCE_IO_ERROR;
         }
     }
-    else if (status == WORKFORCE_OK && (version != 1 || application != 1464226371))
+    else if (status == WORKFORCE_OK &&
+             ((version != 1 && version != 2) || application != 1464226371))
     {
         status = WORKFORCE_IO_ERROR;
     }
@@ -141,6 +146,25 @@ static WorkforceStatus initialize_schema(WorkforceStore *store)
                     "SELECT w.id,w.name,w.profession,w.department,w.age,w.level,w.salary_cents,"
                     "c.id,c.worker_id,c.year,c.month,c.hours,c.hourly_rate_cents "
                     "FROM workers w LEFT JOIN contracts c ON c.worker_id=w.id LIMIT 0",
+                    &statement);
+        (void)sqlite3_finalize(statement);
+    }
+    if (status == WORKFORCE_OK && version == 1)
+    {
+        status =
+            exec_sql(store, "CREATE TABLE salary_changes("
+                            "worker_id INTEGER NOT NULL REFERENCES workers(id) ON DELETE CASCADE,"
+                            "year INTEGER NOT NULL CHECK(year BETWEEN 1 AND 9999),"
+                            "month INTEGER NOT NULL CHECK(month BETWEEN 1 AND 12),"
+                            "salary_cents INTEGER NOT NULL CHECK(salary_cents >= 0),"
+                            "PRIMARY KEY(worker_id,year,month)) STRICT;"
+                            "PRAGMA user_version=2;");
+    }
+    if (status == WORKFORCE_OK)
+    {
+        sqlite3_stmt *statement = NULL;
+        status =
+            prepare(store, "SELECT worker_id,year,month,salary_cents FROM salary_changes LIMIT 0",
                     &statement);
         (void)sqlite3_finalize(statement);
     }
@@ -263,6 +287,42 @@ static WorkforceStatus load_contracts(WorkforceStore *store, Worker *worker)
     return status;
 }
 
+static WorkforceStatus load_salary_history(WorkforceStore *store, Worker *worker)
+{
+    sqlite3_stmt *statement = NULL;
+    int result = SQLITE_DONE;
+    WorkforceStatus status = prepare(
+        store,
+        "SELECT year,month,salary_cents FROM salary_changes WHERE worker_id=? ORDER BY year,month",
+        &statement);
+    if (status != WORKFORCE_OK)
+    {
+        return status;
+    }
+    if (sqlite3_bind_int64(statement, 1, worker->id) != SQLITE_OK)
+    {
+        status = db_error(store);
+    }
+    while (status == WORKFORCE_OK && (result = sqlite3_step(statement)) == SQLITE_ROW)
+    {
+        SalaryChange change = {sqlite3_column_int(statement, 0), sqlite3_column_int(statement, 1),
+                               sqlite3_column_int64(statement, 2)};
+        status = worker_set_salary(worker, change);
+        if (status == WORKFORCE_INVALID || status == WORKFORCE_OVERFLOW)
+        {
+            (void)snprintf(store->error, sizeof(store->error),
+                           "Historico salarial persistido invalido.");
+            status = WORKFORCE_IO_ERROR;
+        }
+    }
+    if (status == WORKFORCE_OK && result != SQLITE_DONE)
+    {
+        status = db_error(store);
+    }
+    (void)sqlite3_finalize(statement);
+    return status;
+}
+
 static WorkforceStatus read_worker(WorkforceStore *store, sqlite3_stmt *statement, Worker *worker)
 {
     WorkerProfile profile = {0};
@@ -284,7 +344,10 @@ static WorkforceStatus read_worker(WorkforceStore *store, sqlite3_stmt *statemen
         (void)snprintf(store->error, sizeof(store->error), "Perfil persistido invalido.");
         return WORKFORCE_IO_ERROR;
     }
-    return load_contracts(store, worker);
+    /* Load the effective salaries before validating contracts: the original
+     * salary may exceed a later salary, so loading contracts first is incorrect. */
+    status = load_salary_history(store, worker);
+    return status == WORKFORCE_OK ? load_contracts(store, worker) : status;
 }
 
 static WorkforceStatus find_worker(WorkforceStore *store, uint32_t id, Worker *worker)
@@ -565,4 +628,111 @@ WorkforceStatus store_remove_contract(WorkforceStore *store, uint32_t id, size_t
     }
     status = step_write(store, statement);
     return status == WORKFORCE_OK && sqlite3_changes(store->db) == 0 ? WORKFORCE_NOT_FOUND : status;
+}
+
+typedef enum
+{
+    EDIT_PROFILE,
+    SET_SALARY,
+    REMOVE_SALARY
+} WorkerEdit;
+
+static WorkforceStatus edit_worker(WorkforceStore *store, uint32_t id, WorkerEdit edit,
+                                   const WorkerProfile *profile, SalaryChange change)
+{
+    Worker worker = {0};
+    sqlite3_stmt *statement = NULL;
+    WorkforceStatus status;
+    if (store == NULL || id == 0)
+    {
+        return WORKFORCE_INVALID;
+    }
+    status = exec_sql(store, "BEGIN IMMEDIATE");
+    if (status != WORKFORCE_OK)
+    {
+        return status;
+    }
+    status = find_worker(store, id, &worker);
+    if (status == WORKFORCE_OK)
+    {
+        switch (edit)
+        {
+        case EDIT_PROFILE:
+            status = worker_update_profile(&worker, profile);
+            break;
+        case SET_SALARY:
+            status = worker_set_salary(&worker, change);
+            break;
+        case REMOVE_SALARY:
+            status = worker_remove_salary(&worker, change.year, change.month);
+            break;
+        }
+    }
+    worker_dispose(&worker);
+    if (status == WORKFORCE_OK)
+    {
+        const char *sql =
+            edit == EDIT_PROFILE
+                ? "UPDATE workers SET name=?,profession=?,department=?,age=?,level=? WHERE id=?"
+            : edit == SET_SALARY
+                ? "INSERT INTO salary_changes(worker_id,year,month,salary_cents) VALUES(?,?,?,?) "
+                  "ON CONFLICT(worker_id,year,month) DO UPDATE SET "
+                  "salary_cents=excluded.salary_cents"
+                : "DELETE FROM salary_changes WHERE worker_id=? AND year=? AND month=?";
+        status = prepare(store, sql, &statement);
+    }
+    if (status == WORKFORCE_OK)
+    {
+        bool bound;
+        if (edit == EDIT_PROFILE)
+        {
+            bound =
+                sqlite3_bind_text(statement, 1, profile->name, -1, SQLITE_TRANSIENT) == SQLITE_OK &&
+                sqlite3_bind_text(statement, 2, profile->profession, -1, SQLITE_TRANSIENT) ==
+                    SQLITE_OK &&
+                sqlite3_bind_text(statement, 3, profile->department, -1, SQLITE_TRANSIENT) ==
+                    SQLITE_OK &&
+                sqlite3_bind_int(statement, 4, profile->age) == SQLITE_OK &&
+                sqlite3_bind_int(statement, 5, profile->level) == SQLITE_OK &&
+                sqlite3_bind_int64(statement, 6, id) == SQLITE_OK;
+        }
+        else
+        {
+            bound = sqlite3_bind_int64(statement, 1, id) == SQLITE_OK &&
+                    sqlite3_bind_int(statement, 2, change.year) == SQLITE_OK &&
+                    sqlite3_bind_int(statement, 3, change.month) == SQLITE_OK &&
+                    (edit != SET_SALARY ||
+                     sqlite3_bind_int64(statement, 4, change.salary_cents) == SQLITE_OK);
+        }
+        if (!bound)
+        {
+            status = db_error(store);
+            (void)sqlite3_finalize(statement);
+        }
+        else
+        {
+            status = step_write(store, statement);
+        }
+    }
+    return finish_write(store, status);
+}
+
+WorkforceStatus store_update_profile(WorkforceStore *store, uint32_t id,
+                                     const WorkerProfile *profile)
+{
+    if (profile == NULL)
+    {
+        return WORKFORCE_INVALID;
+    }
+    return edit_worker(store, id, EDIT_PROFILE, profile, (SalaryChange){0});
+}
+
+WorkforceStatus store_set_salary(WorkforceStore *store, uint32_t id, SalaryChange change)
+{
+    return edit_worker(store, id, SET_SALARY, NULL, change);
+}
+
+WorkforceStatus store_remove_salary(WorkforceStore *store, uint32_t id, int year, int month)
+{
+    return edit_worker(store, id, REMOVE_SALARY, NULL, (SalaryChange){year, month, 0});
 }
