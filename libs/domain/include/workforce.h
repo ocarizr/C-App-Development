@@ -42,7 +42,15 @@ typedef struct
     int64_t hourly_rate_cents;
 } HourContract;
 
-/* Owns contracts. Do not shallow-copy an initialized Worker. */
+typedef struct
+{
+    int year;
+    int month;
+    int64_t salary_cents;
+} SalaryChange;
+
+/* Owns contracts and salary history. Do not shallow-copy an initialized Worker.
+ * profile.salary_cents is the original salary, before any dated changes. */
 typedef struct
 {
     uint32_t id;
@@ -50,6 +58,8 @@ typedef struct
     HourContract *contracts;
     size_t contract_count;
     size_t contract_capacity;
+    SalaryChange *salary_changes;
+    size_t salary_count;
 } Worker;
 
 /* Owns workers and their contracts. Initialize with {0}, dispose exactly once.
@@ -67,9 +77,17 @@ WorkforceStatus worker_level_parse(const char *text, WorkerLevel *level);
 /* init is for fresh storage only. On failure the output remains unchanged. */
 WorkforceStatus worker_init(Worker *worker, uint32_t id, const WorkerProfile *profile);
 void worker_dispose(Worker *worker);
+/* Profile edits preserve ID, contracts, history and the original salary.
+ * Salary changes must use the dated operations below. */
+WorkforceStatus worker_update_profile(Worker *worker, const WorkerProfile *profile);
+WorkforceStatus worker_salary_at(const Worker *worker, int year, int month, int64_t *cents);
+/* Insert or correct one effective month. History remains chronological.
+ * Changes/removals validate all affected contract months; failures are atomic. */
+WorkforceStatus worker_set_salary(Worker *worker, SalaryChange change);
+WorkforceStatus worker_remove_salary(Worker *worker, int year, int month);
 WorkforceStatus worker_add_contract(Worker *worker, HourContract contract);
 WorkforceStatus worker_remove_contract(Worker *worker, size_t index);
-/* Monthly base salary plus contracts matching year/month, with checked arithmetic. */
+/* Salary effective in year/month plus matching contracts, with checked arithmetic. */
 WorkforceStatus worker_income(const Worker *worker, int year, int month, int64_t *cents);
 WorkforceStatus team_add(Team *team, const WorkerProfile *profile, uint32_t *id);
 Worker *team_find(Team *team, uint32_t id);

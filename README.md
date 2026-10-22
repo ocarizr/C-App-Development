@@ -21,11 +21,14 @@ Os executáveis de teste têm seus próprios pontos de entrada.
 - Consultar a remuneração de cada funcionário e o total da equipe em um mês:
   **salário base + soma dos contratos daquele ano e mês**.
 - Remover funcionários e liberar seus contratos.
+- Consultar um funcionário por ID, editar seu perfil e visualizar seu histórico salarial.
+- Cadastrar, corrigir e remover salários com competência de vigência.
 
 Os dados ficam em um **banco SQLite local**, com gravação imediata de funcionários
 e contratos. Ao reiniciar, a aplicação consulta os registros persistidos.
 Não há cálculo de impostos, conversão de moeda ou regras legais de folha de pagamento.
-O salário base informado vale para qualquer mês consultado; não há histórico salarial.
+O salário inicial vale até a primeira mudança cadastrada. A remuneração de cada
+mês usa o salário vigente naquela competência, somado aos contratos do período.
 
 ## Compilar e executar
 
@@ -111,6 +114,35 @@ Engineering, nível `Senior` e salário `3000.00`. Adicione um contrato ao ID
 retornado, para outubro de 2026, com 10 horas a `25.50`. A consulta de outubro
 retorna `3255.00`; em novembro, sem contratos, retorna `3000.00`.
 
+### Perfil e histórico salarial
+
+| Opção | Ação |
+| --- | --- |
+| 7 | Consultar um funcionário pelo ID, com contratos e histórico salarial |
+| 8 | Editar nome, idade, cargo, departamento ou nível, um campo por vez |
+| 9 | Cadastrar ou corrigir o salário de uma competência (ano e mês) |
+| 10 | Remover uma vigência salarial pelo ano e mês |
+
+Na opção 8, `0` cancela a escolha do campo. EOF encerra a sessão sem gravar uma
+edição incompleta. O salário não é alterado pela edição de perfil: use a opção 9
+para informar sua vigência.
+
+Exemplo: com salário inicial `3000.00`, cadastre `4000.00` a partir de novembro
+de 2026 e `4500.00` a partir de janeiro de 2027. Outubro continua usando `3000.00`,
+novembro e dezembro usam `4000.00`, e janeiro de 2027 em diante usa `4500.00`.
+O histórico pode ser informado fora de ordem e é exibido cronologicamente.
+Informar novembro de 2026 novamente, com `4200.00`, corrige aquela vigência sem
+criar duplicata nem alterar o salário de outubro ou a vigência de janeiro.
+
+Ao remover uma vigência, o salário anterior volta a valer até a mudança seguinte.
+Salário zero e reduções são permitidos. Mudanças retroativas, correções e remoções
+são rejeitadas se provocarem overflow em algum mês com contratos existentes.
+O histórico é de **valores vigentes**, e não uma trilha de auditoria de cada
+correção. Nome, cargo e demais campos do perfil representam o cadastro atual.
+
+Na primeira abertura, bancos da versão anterior são migrados automaticamente
+do esquema 1 para o 2 em uma transação, preservando os dados existentes.
+
 - Níveis: `Trainee`, `Junior`, `MidLevel`, `Senior` (grafia exata).
 - Valores monetários: `1250`, `1250.5` ou `1250.50`; use ponto decimal, sem
   separadores de milhar ou símbolo de moeda. Todos os valores usam a mesma moeda.
@@ -148,7 +180,7 @@ declarações, tipos e contratos públicos, protegidos contra inclusão repetida
 
 O estilo mantém structs e funções que recebem ponteiros, sem simular herança.
 `Team` é inicializado com `{0}` e possui a memória dos funcionários; cada
-`Worker` possui seu vetor de contratos. As coleções crescem dinamicamente.
+`Worker` possui seus contratos e seu histórico salarial. As coleções crescem dinamicamente.
 `team_dispose` libera toda a árvore de objetos. Não copie structs proprietárias
 por atribuição no código cliente nem altere diretamente seus campos: use as
 operações públicas. Os campos ficam visíveis para consulta nesta primeira versão.
@@ -161,6 +193,13 @@ Operações retornam `WorkforceStatus`. Erros de validação, alocação e aritm
 não alteram o estado lógico. Valores monetários usam `int64_t` em centavos, sem
 arredondamento de ponto flutuante. Um contrato pertence a um único mês; seu valor
 é a multiplicação das horas inteiras pelo valor/hora em centavos.
+
+No DDD (Domain-Driven Design), `Worker` é o agregado que protege as regras de
+perfil, contratos e vigências salariais. `SalaryChange` representa um valor com
+competência. Essas regras ficam em `libs/domain`, o core da aplicação;
+infraestrutura e configuração são módulos técnicos separados. O repositório
+SQLite coordena transações e chama o domínio antes de gravar. O console coleta
+comandos e apresenta os resultados. Veja o [design](docs/design.md).
 
 ## Testes e integração contínua
 
@@ -177,6 +216,14 @@ continuam ativas em Release, independentemente de `NDEBUG`.
   exclusão em cascata, overflow, rollback, bloqueios e bancos incompatíveis.
 - **Integração:** executa o aplicativo em processos separados, verifica os avisos
   de criação/conexão e confirma persistência de cadastros, contratos e exclusões.
+- **Histórico no domínio:** consultas antes/durante/depois de cada vigência,
+  correções, remoções, edição do perfil e rejeição atômica de overflow.
+- **Histórico na infraestrutura:** persistência de edições, migração de bancos
+  antigos, rollback de migração/escrita, bloqueios e exclusão em cascata.
+  O fluxo entre processos também verifica edição e correção/remoção do histórico.
+
+A evolução do histórico começou pelo teste de comportamento falhando, seguido
+da implementação e validação das regras, mantendo os testes de regressão existentes.
 
 Cada biblioteca guarda seus testes na própria pasta. Para executar apenas uma:
 
@@ -272,7 +319,8 @@ configuram a proteção da branch.
 A aplicação já gerencia múltiplos funcionários, remuneração mensal e persistência
 SQLite. A separação em bibliotecas permite adicionar uma UI de terminal depois,
 mantendo o domínio, a configuração e o armazenamento independentes da apresentação.
-Edição de perfis, histórico salarial e relatórios continuam como extensões futuras.
+Edição de perfis e histórico salarial por competência já estão implementados.
+Relatórios, edição de contratos e a futura UI de terminal continuam como extensões.
 As decisões desta etapa estão em [`docs/persistence.md`](docs/persistence.md).
 
 Os exercícios de HackerRank/VanHack e os binários antigos foram removidos da

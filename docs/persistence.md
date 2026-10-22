@@ -54,19 +54,25 @@ O banco contém:
   em centavos inteiros.
 - `contracts`: ID persistente interno, funcionário, ano, mês, horas e valor/hora
   em centavos inteiros.
+- `salary_changes`: funcionário, ano, mês e salário em centavos. A chave composta
+  `(worker_id, year, month)` identifica uma única vigência.
 
 Tabelas `STRICT`, `NOT NULL` e `CHECK` preservam os tipos e limites básicos.
-`contracts.worker_id` é uma chave estrangeira com exclusão em cascata. O índice
+Contratos e vigências têm chaves estrangeiras com exclusão em cascata. O índice
 por funcionário/ano/mês atende à associação de contratos. IDs de funcionários
 mantêm o limite público `uint32_t` e não são reutilizados após exclusão, inclusive
 depois de reiniciar. A interface ainda exibe contratos por posição ordenada por
 ID; seus números visíveis podem mudar após uma remoção.
 
 A primeira abertura de um banco vazio cria o esquema dentro de uma transação.
-`PRAGMA application_id=1464226371` e `user_version=1` identificam o formato.
+`PRAGMA application_id=1464226371` e `user_version=2` identificam o formato atual.
 Bancos de outra aplicação, arquivos inválidos e versões desconhecidas são
 recusados. Bancos existentes não são apagados nem recriados após erro.
-Migrações futuras devem ser implementadas explicitamente por versão.
+A versão 1 é migrada automaticamente para a 2: a tabela de vigências é criada,
+mantendo o salário original em `workers.salary_cents` como base anterior à primeira
+mudança. IDs, contratos e sequências não são recriados. A versão só é atualizada
+na mesma transação que cria e valida o esquema novo. Uma falha faz rollback,
+preservando os registros e a versão anterior. Versões futuras desconhecidas são recusadas.
 
 O acesso usa prepared statements com parâmetros vinculados. Inclusões de
 contratos usam `BEGIN IMMEDIATE` para validar os dados atuais e gravar na mesma
@@ -76,7 +82,28 @@ statements atômicos do SQLite. O aplicativo só anuncia sucesso após a gravaç
 O timeout configurado controla a espera por bloqueios; falhas são mostradas ao
 usuário, sem fallback silencioso para armazenamento em memória.
 
-Os dados antigos existiam apenas em memória: não há arquivos anteriores a migrar.
+## Edição e vigências
+
+`worker_update_profile` valida o cadastro e preserva ID, contratos, salário inicial
+e histórico. `worker_set_salary` insere ou corrige uma competência;
+`worker_remove_salary` remove sua vigência. `worker_salary_at` encontra o valor
+mais recente com competência menor ou igual à consulta, usando o salário inicial
+quando não há nenhuma mudança anterior.
+
+O agregado valida a linha do tempo candidata e todos os meses com contratos antes
+de substituir seu estado. Alterações inválidas ou com overflow não mudam seus dados.
+O cálculo mensal (`worker_income`) usa o salário daquela competência e os contratos
+daquele mês, sem depender do relógio do sistema.
+
+As operações equivalentes de `WorkforceStore` abrem `BEGIN IMMEDIATE`, carregam o
+agregado completo, chamam o domínio e gravam apenas a alteração solicitada. Correções
+usam UPSERT na chave da competência. A consulta carrega primeiro as vigências e
+depois os contratos, para validar os valores com o salário correto, inclusive
+quando um salário posterior é menor que o inicial. Falhas de domínio, bloqueio,
+constraints ou triggers não geram sucesso nem gravam parcialmente.
+
+O histórico informa os salários vigentes, com correções editáveis. Não armazena
+versões antigas de nomes/cargos ou um log imutável de cada correção salarial.
 Não foi adicionada uma UI visual nesta etapa.
 
 ## Dependências e build sem rede
