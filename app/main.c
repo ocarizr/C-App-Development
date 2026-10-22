@@ -32,13 +32,15 @@ static bool assets(const char *executable, char *path, size_t capacity)
             size_t length = end == NULL ? strlen(entry) : (size_t)(end - entry);
             if (length + strlen(executable) + 2 < sizeof(located))
             {
-                memcpy(located, entry, length);
-                if (length > 0)
+                /* PATH entries are slices, not terminated strings. Build the
+                 * complete candidate in one bounded, terminating operation. */
+                int written = snprintf(located, sizeof(located), "%.*s%s%s", (int)length, entry,
+                                       length > 0 ? "/" : "", executable);
+                if (written < 0 || (size_t)written >= sizeof(located))
                 {
-                    located[length++] = '/';
+                    return false;
                 }
 
-                memcpy(located + length, executable, strlen(executable) + 1);
                 FILE *file = fopen(located, "rb");
                 if (file != NULL)
                 {
