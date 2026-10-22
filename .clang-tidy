@@ -1,0 +1,13 @@
+Checks: >-
+  -*,
+  clang-analyzer-*,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+  bugprone-sizeof-expression,
+  bugprone-suspicious-memset-usage,
+  bugprone-suspicious-semicolon,
+  bugprone-misplaced-widening-cast,
+  bugprone-narrowing-conversions,
+  readability-braces-around-statements
+WarningsAsErrors: '*'
+HeaderFilterRegex: '(^|[/\\])(app|include|src|tests)[/\\]'
+FormatStyle: file
