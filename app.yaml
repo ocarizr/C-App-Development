@@ -1,0 +1,5 @@
+# Safe local defaults. SQLite is a file, not a network service.
+# Relative database paths are resolved from this configuration file's directory.
+database:
+  path: workforce.db
+  busy_timeout_ms: 5000
