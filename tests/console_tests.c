@@ -1,5 +1,5 @@
-#include "test.h"
 #include "console.h"
+#include "test.h"
 
 #include <string.h>
 
@@ -21,9 +21,9 @@ static void session(const char *script, char *output, size_t capacity)
     FILE *result = temporary_file();
     size_t length;
     CHECK(fputs(script, input) >= 0);
-    rewind(input);
+    CHECK(fseek(input, 0, SEEK_SET) == 0);
     CHECK(console_run(input, result) == EXIT_SUCCESS);
-    rewind(result);
+    CHECK(fseek(result, 0, SEEK_SET) == 0);
     length = fread(output, 1, capacity - 1, result);
     output[length] = '\0';
     CHECK(!ferror(result));
@@ -41,7 +41,8 @@ static void test_full_session(void)
             "3\n1\n2026\n10\n10\n25.50\n"
             "3\n1\n2026\n11\n3\n10\n"
             "2\n5\n2026\n10\n4\n1\n1\n5\n2026\n10\n"
-            "6\n1\n2\n5\n2026\n10\n0\n", output, sizeof(output));
+            "6\n1\n2\n5\n2026\n10\n0\n",
+            output, sizeof(output));
     CHECK(strstr(output, "Nenhum funcionario cadastrado.") != NULL);
     CHECK(strstr(output, "ID: 1") != NULL && strstr(output, "ID: 2") != NULL);
     CHECK(strstr(output, "Senior Software Developer | Engineering") != NULL);
@@ -58,7 +59,8 @@ static void test_bad_input(void)
     char output[20000];
     session("banana\n7\n1\n\nAna\nabc\n0\n30\nDeveloper\nEngineering\n"
             "senior\nSenior\nnan\n-1\n1,50\n1.001\n1000.50\n"
-            "3\n999\n4\n1\n1\n6\n999\n0\n", output, sizeof(output));
+            "3\n999\n4\n1\n1\n6\n999\n0\n",
+            output, sizeof(output));
     CHECK(strstr(output, "Informe um inteiro") != NULL);
     CHECK(strstr(output, "Texto vazio") != NULL);
     CHECK(strstr(output, "Nivel invalido.") != NULL);
@@ -74,7 +76,8 @@ static void test_long_line_and_eof(void)
     size_t i;
     script[0] = '1';
     script[1] = '\n';
-    for (i = 2; i < 502; ++i) {
+    for (i = 2; i < 502; ++i)
+    {
         script[i] = 'x';
     }
     memcpy(script + 502, "\nAna\n30\nDeveloper\nEngineering\nJunior\n1\n0\n",
@@ -82,8 +85,7 @@ static void test_long_line_and_eof(void)
     session(script, output, sizeof(output));
     CHECK(strstr(output, "Entrada longa demais.") != NULL);
     CHECK(strstr(output, "Funcionario cadastrado. ID: 1") != NULL);
-    session("1\nAna\n30\nDeveloper\nEngineering\nJunior\n1\n3\n1\n2026\n",
-            output, sizeof(output));
+    session("1\nAna\n30\nDeveloper\nEngineering\nJunior\n1\n3\n1\n2026\n", output, sizeof(output));
     CHECK(strstr(output, "Sessao encerrada.") != NULL);
     session("", output, sizeof(output));
     CHECK(strstr(output, "Sessao encerrada.") != NULL);
@@ -97,7 +99,8 @@ static void test_payroll_overflow(void)
     session("1\nAna\n30\nDeveloper\nEngineering\nSenior\n92233720368547758.07\n"
             "3\n1\n2026\n10\n1\n0.01\n"
             "1\nBruno\n30\nDeveloper\nEngineering\nJunior\n1\n"
-            "5\n2026\n10\n0\n", output, sizeof(output));
+            "5\n2026\n10\n0\n",
+            output, sizeof(output));
     CHECK(strstr(output, "Limite numerico excedido.") != NULL);
     CHECK(strstr(output, "Total da equipe:") == NULL);
 }

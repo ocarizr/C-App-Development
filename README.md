@@ -1,5 +1,11 @@
 # Workforce — gerenciamento de equipe em C
 
+[![Build Debug](https://github.com/ocarizr/C-App-Development/actions/workflows/build-debug.yml/badge.svg?branch=master&event=push)](https://github.com/ocarizr/C-App-Development/actions/workflows/build-debug.yml)
+[![Build Release](https://github.com/ocarizr/C-App-Development/actions/workflows/build-release.yml/badge.svg?branch=master&event=push)](https://github.com/ocarizr/C-App-Development/actions/workflows/build-release.yml)
+[![Testes](https://github.com/ocarizr/C-App-Development/actions/workflows/tests.yml/badge.svg?branch=master&event=push)](https://github.com/ocarizr/C-App-Development/actions/workflows/tests.yml)
+[![Formatação](https://github.com/ocarizr/C-App-Development/actions/workflows/format.yml/badge.svg?branch=master&event=push)](https://github.com/ocarizr/C-App-Development/actions/workflows/format.yml)
+[![Análise estática](https://github.com/ocarizr/C-App-Development/actions/workflows/static-analysis.yml/badge.svg?branch=master&event=push)](https://github.com/ocarizr/C-App-Development/actions/workflows/static-analysis.yml)
+
 Aplicativo de console em **C11** para cadastrar funcionários, organizar seus
 cargos e departamentos e gerenciar contratos de trabalho por hora. O projeto
 tem um único ponto de entrada da aplicação em [`app/main.c`](app/main.c).
@@ -129,16 +135,78 @@ cmake --build build-sanitized --parallel
 ctest --test-dir build-sanitized --output-on-failure --no-tests=error
 ```
 
-A [pipeline](.github/workflows/ci.yml) executa em pull requests direcionados à
-`master`, pushes na `master` e manualmente. Compila e testa em Linux e Windows,
-em Debug e Release; um job Linux adicional usa Clang com AddressSanitizer,
-UndefinedBehaviorSanitizer e detecção de vazamentos. Warnings de compilação
-são tratados como erros. O workflow usa [`actions/checkout`](https://github.com/actions/checkout)
-e os comandos oficiais do [CTest](https://cmake.org/cmake/help/latest/manual/ctest.1.html).
+Os workflows executam em pull requests direcionados à `master`, pushes na
+`master` e manualmente. Cada badge consulta seu próprio workflow na `master`,
+considerando o evento de push, para que os resultados sejam independentes:
+
+| Badge | Workflow | Verificação |
+| --- | --- | --- |
+| Build Debug | [build-debug.yml](.github/workflows/build-debug.yml) | Aplicativo em Debug no Linux e Windows |
+| Build Release | [build-release.yml](.github/workflows/build-release.yml) | Aplicativo em Release no Linux e Windows |
+| Testes | [tests.yml](.github/workflows/tests.yml) | CTest em Debug/Release, Linux/Windows e sanitizers no Linux |
+| Formatação | [format.yml](.github/workflows/format.yml) | clang-format em todos os `.c` e `.h` versionados |
+| Análise estática | [static-analysis.yml](.github/workflows/static-analysis.yml) | clang-tidy no aplicativo e nos testes |
+
+O workflow de testes inclui Clang com AddressSanitizer, UndefinedBehaviorSanitizer
+e detecção de vazamentos. Warnings de compilação são tratados como erros.
+Não há configuração de pré-release: Debug e Release são modos de compilação,
+independentes do versionamento ou da publicação de releases.
+
+As badges só terão resultado depois que os novos workflows forem enviados e
+executados na `master`. São usadas as [badges oficiais do GitHub Actions](https://docs.github.com/en/actions/how-tos/monitor-workflows/add-a-status-badge),
+sem publicar arquivos de status ou usar tokens adicionais.
+
+## Formatação e análise estática
+
+O estilo está em [`.clang-format`](.clang-format): indentação de quatro espaços,
+chaves em linhas separadas e limite de 100 colunas. O clang-format usa seu parser
+de C/C++ (`Language: Cpp`) também para arquivos C; o aplicativo continua sendo C11.
+O CI usa LLVM **18** no Ubuntu 24.04 para manter a versão das ferramentas estável.
+Instale `clang-format-18`, `clang-tidy-18`, `clang-18` e Ninja para repetir os checks
+nesse ambiente.
+
+Para verificar a formatação no Bash, incluindo caminhos com espaços:
+
+```bash
+mapfile -d '' files < <(git ls-files -z -- '*.c' '*.h')
+clang-format-18 --dry-run --Werror "${files[@]}"
+```
+
+Para aplicar o estilo, troque `--dry-run --Werror` por `-i`.
+No PowerShell, com as ferramentas LLVM no `PATH`:
+
+```powershell
+$sourceFiles = @(git ls-files -- '*.c' '*.h')
+clang-format --dry-run --Werror -- $sourceFiles
+# Para aplicar: clang-format -i -- $sourceFiles
+```
+
+A configuração [`.clang-tidy`](.clang-tidy) habilita o Clang Static Analyzer,
+checks de operações suspeitas, conversões numéricas e uso de chaves.
+Todo diagnóstico habilitado é tratado como erro. O check
+`clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling` fica
+excluído por recomendar substituições de funções C padrão que não são portáveis
+entre os compiladores suportados; as verificações de acesso e tamanho de memória
+do analyzer permanecem habilitadas.
+
+Para analisar todas as unidades de compilação, incluindo os testes, no Bash:
+
+```bash
+CC=clang-18 cmake -S . -B build-tidy -G Ninja \
+  -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON \
+  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_C_CLANG_TIDY=clang-tidy-18
+cmake --build build-tidy --parallel
+```
+
+O CMake passa ao clang-tidy as mesmas definições e caminhos de inclusão usados
+na compilação. Use um diretório novo para a primeira análise completa; builds
+incrementais só analisam novamente as fontes que precisarem ser recompiladas.
+No Windows, execute em um Developer PowerShell do Visual Studio e substitua
+`clang-18`/`clang-tidy-18` pelos nomes locais `clang`/`clang-tidy`.
 
 Para impedir merges com falhas, configure no GitHub uma regra de proteção da
-`master` exigindo os checks desta pipeline; o arquivo de workflow por si só não
-configura a proteção da branch.
+`master` exigindo os checks destes workflows; os arquivos de workflow por si só não
+configuram a proteção da branch.
 
 ## Próximas extensões
 

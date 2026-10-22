@@ -1,21 +1,33 @@
-#include "test.h"
 #include "money.h"
+#include "test.h"
 #include "workforce.h"
 
 #include <string.h>
 
 static WorkerProfile profile(void)
 {
-    WorkerProfile result = {"Ana Silva", "Software Developer", "Engineering", 30,
-                            WORKER_SENIOR, 300000};
+    WorkerProfile result = {"Ana Silva", "Software Developer", "Engineering",
+                            30,          WORKER_SENIOR,        300000};
     return result;
 }
 
 static void test_money(void)
 {
     int64_t cents = -1;
-    const char *invalid[] = {"", "-1", "+1", " 1", "1 ", "1,50", "1e3", "nan", "inf",
-                             "1.", ".50", "1.001", "1.2x", "92233720368547758.08",
+    const char *invalid[] = {"",
+                             "-1",
+                             "+1",
+                             " 1",
+                             "1 ",
+                             "1,50",
+                             "1e3",
+                             "nan",
+                             "inf",
+                             "1.",
+                             ".50",
+                             "1.001",
+                             "1.2x",
+                             "92233720368547758.08",
                              "999999999999999999999999999999999999"};
     size_t i;
     CHECK(money_parse("0", &cents) && cents == 0);
@@ -24,7 +36,8 @@ static void test_money(void)
     CHECK(money_parse("12.3", &cents) && cents == 1230);
     CHECK(money_parse("0012.34", &cents) && cents == 1234);
     CHECK(money_parse("92233720368547758.07", &cents) && cents == INT64_MAX);
-    for (i = 0; i < sizeof(invalid) / sizeof(invalid[0]); ++i) {
+    for (i = 0; i < sizeof(invalid) / sizeof(invalid[0]); ++i)
+    {
         cents = 17;
         CHECK(!money_parse(invalid[i], &cents));
         CHECK(cents == 17);
@@ -39,7 +52,8 @@ static void test_profiles(void)
     WorkerProfile data = profile();
     WorkerLevel level = WORKER_JUNIOR;
     int i;
-    for (i = WORKER_TRAINEE; i <= WORKER_SENIOR; ++i) {
+    for (i = WORKER_TRAINEE; i <= WORKER_SENIOR; ++i)
+    {
         CHECK(worker_level_parse(worker_level_name((WorkerLevel)i), &level) == WORKFORCE_OK);
         CHECK(level == (WorkerLevel)i);
     }
@@ -119,7 +133,8 @@ static void test_contracts(void)
     CHECK(worker_remove_contract(&worker, 0) == WORKFORCE_OK);
     CHECK(worker_remove_contract(&worker, 0) == WORKFORCE_OK);
     CHECK(worker_remove_contract(&worker, 0) == WORKFORCE_NOT_FOUND);
-    for (i = 0; i < 100; ++i) {
+    for (i = 0; i < 100; ++i)
+    {
         CHECK(worker_add_contract(&worker, october) == WORKFORCE_OK);
     }
     CHECK(worker.contract_count == 100);
@@ -174,7 +189,8 @@ static void test_team(void)
     CHECK(team_add(&team, &data, NULL) == WORKFORCE_INVALID);
     CHECK(team_add(&team, NULL, &id) == WORKFORCE_INVALID);
     CHECK(team.count == 0 && team.last_id == 0);
-    for (expected = 1; expected <= 100; ++expected) {
+    for (expected = 1; expected <= 100; ++expected)
+    {
         Worker *worker;
         CHECK(team_add(&team, &data, &id) == WORKFORCE_OK && id == expected);
         worker = team_find(&team, id);

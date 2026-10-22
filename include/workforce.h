@@ -6,7 +6,8 @@
 
 #define WORKFORCE_NAME_SIZE 100
 
-typedef enum {
+typedef enum
+{
     WORKFORCE_OK,
     WORKFORCE_INVALID,
     WORKFORCE_NOT_FOUND,
@@ -14,14 +15,16 @@ typedef enum {
     WORKFORCE_OVERFLOW
 } WorkforceStatus;
 
-typedef enum {
+typedef enum
+{
     WORKER_TRAINEE,
     WORKER_JUNIOR,
     WORKER_MID_LEVEL,
     WORKER_SENIOR
 } WorkerLevel;
 
-typedef struct {
+typedef struct
+{
     char name[WORKFORCE_NAME_SIZE];
     char profession[WORKFORCE_NAME_SIZE];
     char department[WORKFORCE_NAME_SIZE];
@@ -30,7 +33,8 @@ typedef struct {
     int64_t salary_cents;
 } WorkerProfile;
 
-typedef struct {
+typedef struct
+{
     int year;
     int month;
     int hours;
@@ -38,7 +42,8 @@ typedef struct {
 } HourContract;
 
 /* Owns contracts. Do not shallow-copy an initialized Worker. */
-typedef struct {
+typedef struct
+{
     uint32_t id;
     WorkerProfile profile;
     HourContract *contracts;
@@ -48,7 +53,8 @@ typedef struct {
 
 /* Owns workers and their contracts. Initialize with {0}, dispose exactly once.
  * Pointers returned by team_find are invalidated by adding/removing workers. */
-typedef struct {
+typedef struct
+{
     Worker *workers;
     size_t count;
     size_t capacity;

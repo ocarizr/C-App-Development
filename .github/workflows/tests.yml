@@ -1,4 +1,4 @@
-name: CMake CI
+name: Tests
 
 on:
   pull_request:
@@ -15,8 +15,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-test:
-    name: ${{ matrix.os }} / ${{ matrix.build_type }}
+  tests:
+    name: Tests / ${{ matrix.os }} / ${{ matrix.build_type }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -29,9 +29,9 @@ jobs:
           persist-credentials: false
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DBUILD_TESTING=ON
-      - name: Build
+      - name: Build tests
         run: cmake --build build --config ${{ matrix.build_type }} --parallel
-      - name: Test
+      - name: Run tests
         run: ctest --test-dir build -C ${{ matrix.build_type }} --output-on-failure --no-tests=error
 
   sanitizers:
@@ -47,7 +47,7 @@ jobs:
           persist-credentials: false
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON -DWORKFORCE_SANITIZERS=ON
-      - name: Build
+      - name: Build tests
         run: cmake --build build --parallel
-      - name: Test
+      - name: Run tests
         run: ctest --test-dir build --output-on-failure --no-tests=error
