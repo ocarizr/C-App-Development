@@ -1,0 +1,24 @@
+<Window text="Equipe | Cadastro e edicao do perfil">
+  <VStack gap="1">
+    <HStack>
+      <Button text="Atualizar equipe" command="worker.list"/>
+      <Button text="Sair" command="quit"/>
+    </HStack>
+    <Table id="team-table" text="Equipe (ID estavel) | setas horizontais e PgUp/PgDn para navegar" bind="workers" height="7"/>
+    <Include source="shared/worker.xml"/>
+    <Grid columns="3">
+      <Input text="Nome" bind="worker.name"/>
+      <Input text="Idade" bind="worker.age" maxLength="3"/>
+      <Input text="Cargo" bind="worker.profession"/>
+      <Input text="Departamento" bind="worker.department"/>
+      <Input text="Nivel: Trainee/Junior/MidLevel/Senior" bind="worker.level"/>
+      <Input text="Salario inicial (somente cadastro)" bind="worker.salary" maxLength="24"/>
+    </Grid>
+    <HStack>
+      <Button text="Cadastrar novo" command="worker.create"/>
+      <Button text="Salvar perfil do ID" command="worker.save"/>
+      <Button text="Excluir ID e seus dados" command="worker.delete"/>
+    </HStack>
+    <Label text="Para editar: informe o ID, carregue, altere os campos e salve. Salarios: aba Historico."/>
+  </VStack>
+</Window>

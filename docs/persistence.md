@@ -7,20 +7,21 @@
 | `workforce_domain` | Structs, validação, contratos e remuneração | Biblioteca C padrão |
 | `workforce_config` | Arquivos YAML e sobreposição tipada | `workforce_yaml` (libyaml) |
 | `workforce_infra` | Conexão, esquema, consultas e gravações | `workforce_domain`, `workforce_sqlite` |
-| `workforce_console` | Menu e apresentação atual | `workforce_infra`, `workforce_export` |
+| `workforce_mvvm` | Registro de propriedades e comandos | Biblioteca C padrão |
+| `workforce_application` | ViewModel e casos de uso | `workforce_mvvm`, `workforce_infra`, `workforce_export` |
+| `workforce_ui` | XML, componentes, layouts e terminal | `workforce_mvvm`, Expat |
 | `workforce_export` | Apresentação de relatórios em texto/CSV | `workforce_domain` |
-| `workforce` | Inicialização, configuração e composição | Console e configuração |
+| `workforce` | Inicialização, configuração e composição | Configuração, application e UI |
 
 Todos os targets de biblioteca são declarados explicitamente como `STATIC`,
-inclusive SQLite e libyaml. Linux produz arquivos `.a`; MSVC produz `.lib`.
-Não há dependência das DLLs de SQLite/libyaml em execução. O runtime C do sistema
+inclusive SQLite, libyaml e Expat. Linux produz arquivos `.a`; MSVC produz `.lib`.
+Não há dependência das DLLs dessas três bibliotecas em execução. O runtime C do sistema
 segue o padrão do compilador; não se trata de um executável totalmente estático.
 
 As APIs públicas estão em `libs/<componente>/include`, implementações em `src` e
 testes em `tests`, com um `CMakeLists.txt` por componente. A infraestrutura não
 depende da biblioteca de configuração: `main.c` converte `AppConfig` em
-`StoreOptions` e injeta as opções em `store_open`. A configuração também pode
-ser usada por uma futura biblioteca de UI, sem depender de SQLite.
+`StoreOptions` e injeta as opções em `store_open`. A UI recebe bindings do ViewModel e não depende de YAML ou SQLite.
 
 ## Configuração
 
@@ -62,10 +63,8 @@ Tabelas `STRICT`, `NOT NULL` e `CHECK` preservam os tipos e limites básicos.
 Contratos e vigências têm chaves estrangeiras com exclusão em cascata. O índice
 por funcionário/ano/mês atende à associação de contratos. IDs de funcionários
 mantêm o limite público `uint32_t` e não são reutilizados após exclusão, inclusive
-depois de reiniciar. IDs de contratos também são persistentes e agora aparecem
-no modelo e na interface. Edição e remoção usam o ID do funcionário e do contrato,
-sem offsets ou posições de listas. Não há alteração de esquema nesta etapa:
-`contracts.id` já existia nas versões 1 e 2.
+depois de reiniciar. IDs de contratos são persistentes e aparecem no modelo e na interface. Edição e remoção usam o ID do funcionário e do contrato,
+sem offsets ou posições de listas. O ID persistente é a chave `contracts.id`.
 
 A primeira abertura de um banco vazio cria o esquema dentro de uma transação.
 `PRAGMA application_id=1464226371` e `user_version=2` identificam o formato atual.
@@ -107,7 +106,7 @@ constraints ou triggers não geram sucesso nem gravam parcialmente.
 
 O histórico informa os salários vigentes, com correções editáveis. Não armazena
 versões antigas de nomes/cargos ou um log imutável de cada correção salarial.
-Não foi adicionada uma UI visual nesta etapa.
+A UI de terminal usa o ViewModel para estas operações.
 
 ## Contratos e relatórios
 
@@ -132,45 +131,28 @@ com vírgulas, aspas, quebras de linha e textos semelhantes a fórmulas.
 
 ## Dependências e build sem rede
 
-O CMake usa [SQLite 3.54.1](https://www.sqlite.org/download.html) e
-[libyaml 0.2.5](https://github.com/yaml/libyaml/releases/tag/0.2.5), fixados em
+O CMake usa [SQLite 3.54.1](https://www.sqlite.org/download.html),
+[libyaml 0.2.5](https://github.com/yaml/libyaml/releases/tag/0.2.5) e
+[Expat 2.9.0](https://github.com/libexpat/libexpat/releases/tag/R_2_9_0), fixados em
 [`cmake/Dependencies.cmake`](../cmake/Dependencies.cmake) com hashes SHA-256.
 SQLite é compilado a partir da amalgamation oficial; extensão dinâmica está
 desabilitada. Os arquivos baixados ficam no build, fora do controle de versão.
 Os avisos de licença estão em [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).
 
-Para compilar sem rede, extraia previamente os dois arquivos oficiais e informe
-os diretórios que contêm `sqlite3.c` e os fontes do libyaml:
+Para compilar sem rede, extraia previamente os três arquivos oficiais e informe
+os diretórios que contêm `sqlite3.c`, os fontes do libyaml e o CMakeLists do Expat:
 
 ```sh
 cmake -S . -B build \
   -DFETCHCONTENT_SOURCE_DIR_SQLITE_SOURCE=/caminho/sqlite-amalgamation-3540100 \
-  -DFETCHCONTENT_SOURCE_DIR_YAML_SOURCE=/caminho/libyaml-0.2.5
+  -DFETCHCONTENT_SOURCE_DIR_YAML_SOURCE=/caminho/libyaml-0.2.5 \
+  -DFETCHCONTENT_SOURCE_DIR_EXPAT_SOURCE=/caminho/expat-2.9.0
 ```
 
 Os overrides usam fontes locais fornecidos pelo usuário, portanto não passam pela
 verificação de hash do download. Conserve as versões fixadas e verifique os
 arquivos ao prepará-los. Builds normais e os workflows fazem essa verificação
 automaticamente.
-
-## Recuperação de uma cópia de pastas
-
-A árvore de fontes atual tem `app/`, `libs/` e `tests/support/`. Os antigos
-`src/`, `include/` e testes na raiz de `tests/` foram movidos; não devem ser
-copiados de volta. O CMake recusa as versões antigas conhecidas para identificar
-esse problema na configuração, antes de executar os demais checks.
-
-Após mover/copiar o checkout, use um diretório novo para evitar caminhos e
-arquivos gerados do checkout anterior:
-
-```sh
-cmake -S . -B build-recovery -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Debug
-cmake --build build-recovery --config Debug --parallel
-ctest --test-dir build-recovery -C Debug --output-on-failure --no-tests=error
-```
-
-Preserve o banco e os arquivos de configuração locais. Copiar arquivos pelo
-Explorer não aplica as exclusões e renomeações do Git.
 
 No Linux, o target privado de libyaml define `_POSIX_C_SOURCE=200809L` para
 expor `strdup` em C11 estrito. GCC e Clang também tratam declarações implícitas

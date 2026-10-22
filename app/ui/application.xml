@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Application text="WORKFORCE | Gestao de equipe">
+  <Tabs id="navigation">
+    <Tab id="team" text="Equipe" source="team.xml"/>
+    <Tab id="contracts" text="Contratos" source="contracts.xml"/>
+    <Tab id="salary" text="Historico" source="salary.xml"/>
+    <Tab id="reports" text="Relatorios" source="reports.xml"/>
+  </Tabs>
+  <StatusBar bind="status"/>
+  <StatusBar text="Tab/Shift+Tab: foco | Enter: acao | F1/F2: abas | Ctrl+U: limpar | PgUp/PgDn: tabela | Esc: sair"/>
+</Application>

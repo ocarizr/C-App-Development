@@ -1,0 +1,21 @@
+<Window text="Contratos por ID">
+  <VStack>
+    <Include source="shared/worker.xml"/>
+    <Table text="Contratos do funcionario carregado" bind="contracts" height="10"/>
+    <HStack>
+      <Input text="ID do contrato (para editar/excluir)" bind="contract.id" maxLength="19"/>
+      <Button text="Carregar contrato" command="contract.load"/>
+    </HStack>
+    <Grid columns="4">
+      <Input text="Ano" bind="contract.year" maxLength="4"/>
+      <Input text="Mes" bind="contract.month" maxLength="2"/>
+      <Input text="Horas" bind="contract.hours" maxLength="10"/>
+      <Input text="Valor/hora" bind="contract.rate" maxLength="24"/>
+    </Grid>
+    <HStack>
+      <Button text="Adicionar novo" command="contract.add"/>
+      <Button text="Salvar contrato do ID" command="contract.save"/>
+      <Button text="Excluir contrato do ID" command="contract.delete"/>
+    </HStack>
+  </VStack>
+</Window>

@@ -1,0 +1,7 @@
+<Application text="Test UI">
+  <Tabs>
+    <Tab id="first" text="First" source="window.xml"/>
+    <Tab id="second" text="Second" source="window.xml"/>
+  </Tabs>
+  <StatusBar bind="status"/>
+</Application>

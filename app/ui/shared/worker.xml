@@ -1,0 +1,9 @@
+<Fragment>
+  <VStack gap="0">
+    <HStack>
+      <Input text="ID do funcionario" bind="worker.id" maxLength="10"/>
+      <Button text="Carregar funcionario" command="worker.load"/>
+    </HStack>
+    <Label bind="selection"/>
+  </VStack>
+</Fragment>

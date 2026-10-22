@@ -1,0 +1,16 @@
+<Window text="Relatorios | Remuneracao mensal por departamento">
+  <VStack>
+    <Grid columns="4">
+      <Input text="Ano" bind="report.year" maxLength="4"/>
+      <Input text="Mes" bind="report.month" maxLength="2"/>
+      <Input text="Departamento (* = todos)" bind="report.department"/>
+      <Input text="Nivel (* = todos)" bind="report.level"/>
+    </Grid>
+    <Button text="Gerar relatorio" command="report.build"/>
+    <Table text="Remuneracao, subtotais e total | PgUp/PgDn e setas horizontais" bind="report" height="17"/>
+    <HStack>
+      <Input text="Arquivo CSV novo (nao sobrescreve)" bind="report.path" maxLength="1023"/>
+      <Button text="Gerar e exportar CSV" command="report.export"/>
+    </HStack>
+  </VStack>
+</Window>
