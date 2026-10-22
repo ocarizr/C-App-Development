@@ -35,3 +35,12 @@ compile_commands.json
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Runtime data and private configuration overlays
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.local.yaml

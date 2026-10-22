@@ -20,9 +20,15 @@ static void session(const char *script, char *output, size_t capacity)
     FILE *input = temporary_file();
     FILE *result = temporary_file();
     size_t length;
+    WorkforceStore *store = NULL;
+    StoreOptions options = {":memory:", 0};
+    bool created;
+    char error[WORKFORCE_STORE_ERROR_SIZE];
+    CHECK(store_open(&options, &store, &created, error) == WORKFORCE_OK);
     CHECK(fputs(script, input) >= 0);
     CHECK(fseek(input, 0, SEEK_SET) == 0);
-    CHECK(console_run(input, result) == EXIT_SUCCESS);
+    CHECK(console_run(input, result, store) == EXIT_SUCCESS);
+    store_close(store);
     CHECK(fseek(result, 0, SEEK_SET) == 0);
     length = fread(output, 1, capacity - 1, result);
     output[length] = '\0';
@@ -111,8 +117,8 @@ int main(void)
     test_bad_input();
     test_long_line_and_eof();
     test_payroll_overflow();
-    CHECK(console_run(NULL, stdout) == EXIT_FAILURE);
-    CHECK(console_run(stdin, NULL) == EXIT_FAILURE);
+    CHECK(console_run(NULL, stdout, NULL) == EXIT_FAILURE);
+    CHECK(console_run(stdin, NULL, NULL) == EXIT_FAILURE);
     puts("Console tests passed.");
     return EXIT_SUCCESS;
 }

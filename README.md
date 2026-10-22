@@ -15,21 +15,25 @@ Os executáveis de teste têm seus próprios pontos de entrada.
 
 - Cadastrar e listar funcionários com nome completo, idade, cargo, departamento,
   nível de experiência e salário mensal.
-- Identificar funcionários por IDs estáveis durante a sessão, sem reutilizar IDs
+- Identificar funcionários por IDs persistentes, sem reutilizar IDs
   removidos.
 - Adicionar e remover contratos por funcionário, com ano, mês, horas e valor/hora.
 - Consultar a remuneração de cada funcionário e o total da equipe em um mês:
   **salário base + soma dos contratos daquele ano e mês**.
 - Remover funcionários e liberar seus contratos.
 
-Os dados ficam **somente em memória** e são descartados ao sair. Não há banco de
-dados, cálculo de impostos, conversão de moeda ou regras legais de folha de pagamento.
+Os dados ficam em um **banco SQLite local**, com gravação imediata de funcionários
+e contratos. Ao reiniciar, a aplicação consulta os registros persistidos.
+Não há cálculo de impostos, conversão de moeda ou regras legais de folha de pagamento.
 O salário base informado vale para qualquer mês consultado; não há histórico salarial.
 
 ## Compilar e executar
 
 Requisitos: CMake **3.20 ou superior** e compilador C11 (GCC, Clang ou MSVC com
-suporte a C11). Não são necessárias bibliotecas externas ou downloads no build.
+suporte a C11). Na primeira configuração, o CMake baixa os fontes de SQLite
+**3.54.1** e libyaml **0.2.5**, com versões e hashes SHA-256 fixados.
+Ambas as dependências são compiladas como bibliotecas estáticas; não é necessário
+instalar SQLite, libyaml ou um servidor de banco na máquina.
 No Windows, instale as ferramentas de C++ do Visual Studio, que incluem o
 compilador C, o Windows SDK e a opção de ferramentas CMake.
 
@@ -42,13 +46,13 @@ ctest --test-dir build -C Debug --output-on-failure --no-tests=error
 Execute no Linux/macOS ou com um gerador de configuração única:
 
 ```sh
-./build/workforce
+./build/app/workforce
 ```
 
 No PowerShell, com o gerador do Visual Studio:
 
 ```powershell
-.\build\Debug\workforce.exe
+.\build\app\Debug\workforce.exe
 ```
 
 O CMake deve estar no `PATH`. Se estiver usando o compilador MSVC com Ninja,
@@ -57,6 +61,44 @@ troque `Debug` por `Release` nos comandos; com geradores de configuração únic
 use outro diretório, por exemplo `build-release`.
 
 Para compilar apenas o aplicativo, configure com `-DBUILD_TESTING=OFF`.
+
+## Configuração e banco de dados
+
+Execute a partir da raiz do repositório, onde está o [`app.yaml`](app.yaml).
+O CMake também copia esse arquivo para a raiz do diretório de build, permitindo
+executar a partir dele. Sem argumentos, a aplicação procura `app.yaml` no diretório
+atual. Um arquivo ausente ou inválido encerra a inicialização com uma mensagem de erro.
+
+```yaml
+database:
+  path: workforce.db
+  busy_timeout_ms: 5000
+```
+
+SQLite usa um arquivo local, sem `localhost`, usuário ou senha. O caminho relativo
+do banco é resolvido a partir do diretório do YAML que definiu `database.path`.
+O diretório pai deve existir; o arquivo do banco e as tabelas são criados se necessário.
+O console avisa quando um banco foi criado e quando conectou a um banco existente.
+
+É possível carregar configurações próprias ou sobreposições de bibliotecas:
+
+```powershell
+.\build\app\Debug\workforce.exe --config app.yaml --config infra.local.yaml
+```
+
+Cada arquivo sobrescreve apenas as opções que informa. Por exemplo,
+`infra.local.yaml` pode conter somente `database: {busy_timeout_ms: 10000}`.
+Os arquivos informados com `--config` substituem a busca automática pelo `app.yaml`;
+use o primeiro argumento para carregá-lo explicitamente quando quiser sobrepor valores.
+Chaves desconhecidas, duplicadas e mais de um documento YAML são rejeitados.
+`busy_timeout_ms` aceita 0 a 60000. A configuração do aplicativo exige um caminho
+persistente e rejeita `:memory:` e URIs SQLite.
+
+Arquivos `*.local.yaml`, bancos e seus arquivos auxiliares são ignorados pelo Git.
+O arquivo versionado contém somente valores locais de exemplo. As opções são
+injetadas na biblioteca de infraestrutura; ela não lê YAML nem imprime no console.
+Consulte [persistência e arquitetura](docs/persistence.md) para detalhes do esquema,
+das bibliotecas estáticas e do build sem acesso à rede.
 
 ## Usar o console
 
@@ -87,20 +129,21 @@ centavos são rejeitados, incluindo o total mensal da equipe.
 ## Arquitetura
 
 ```text
-app/main.c          entrada do aplicativo
-app/console.h       interface da sessão de console
-src/console.c       menu, leitura, validação textual e apresentação
-include/workforce.h modelos e operações de funcionários, contratos e equipe
-src/workforce.c     regras do domínio e gerenciamento de memória
-include/money.h     interface de conversão de valores monetários
-src/money.c         conversão decimal exata para centavos
-tests/              testes em C, executados pelo CTest
+app/                main.c, console e testes do aplicativo
+libs/domain/        modelos, regras, dinheiro e testes do domínio
+libs/config/        leitura e sobreposição de YAML, com testes próprios
+libs/infra/         repositório SQLite e testes próprios
+tests/support/      utilitários compartilhados dos testes
+cmake/              dependências estáticas com versões e hashes fixos
+app.yaml            configuração local de exemplo
 .github/workflows/  integração contínua
 ```
 
-`workforce_domain` não depende de entrada/saída. `workforce_console` depende do
-domínio e recebe `FILE *` para entrada e saída, permitindo testar o mesmo fluxo
-usado pelo aplicativo. As implementações ficam em `.c`; os `.h` contêm apenas
+`workforce_domain` não depende de entrada/saída. `workforce_config` lê YAML com
+libyaml. `workforce_infra` implementa o repositório usando SQLite e recebe as
+opções por injeção. `main.c` compõe as bibliotecas e notifica o usuário sobre a conexão.
+`workforce_console` recebe `FILE *` para entrada/saída e uma conexão de repositório.
+As implementações ficam em `.c`; os `.h` contêm apenas
 declarações, tipos e contratos públicos, protegidos contra inclusão repetida.
 
 O estilo mantém structs e funções que recebem ponteiros, sem simular herança.
@@ -109,8 +152,10 @@ O estilo mantém structs e funções que recebem ponteiros, sem simular herança
 `team_dispose` libera toda a árvore de objetos. Não copie structs proprietárias
 por atribuição no código cliente nem altere diretamente seus campos: use as
 operações públicas. Os campos ficam visíveis para consulta nesta primeira versão.
-Ponteiros retornados por `team_find` devem ser obtidos novamente após adicionar
-ou remover funcionários, pois o vetor pode mudar de endereço ou posição.
+O console não mantém uma equipe global em memória: listagens, buscas e consultas
+mensais recebem snapshots novos do banco, descartados após o uso. Mutação ocorre
+por operações do repositório com parâmetros vinculados e transações. A remoção de
+um funcionário exclui seus contratos por chave estrangeira com `ON DELETE CASCADE`.
 
 Operações retornam `WorkforceStatus`. Erros de validação, alocação e aritmética
 não alteram o estado lógico. Valores monetários usam `int64_t` em centavos, sem
@@ -126,6 +171,19 @@ continuam ativas em Release, independentemente de `NDEBUG`.
   filtragem por mês/ano, crescimento das coleções, remoções, IDs e overflow.
 - **Console:** sessões completas com vários funcionários, remuneração, remoções,
   entradas inválidas, linhas longas, fim de entrada e overflow do total da equipe.
+- **Configuração:** YAML, sobreposição, caminhos relativos/absolutos, chaves
+  duplicadas/desconhecidas, arquivos ausentes e valores inválidos.
+- **Infraestrutura:** reabertura, IDs persistentes, visibilidade entre conexões,
+  exclusão em cascata, overflow, rollback, bloqueios e bancos incompatíveis.
+- **Integração:** executa o aplicativo em processos separados, verifica os avisos
+  de criação/conexão e confirma persistência de cadastros, contratos e exclusões.
+
+Cada biblioteca guarda seus testes na própria pasta. Para executar apenas uma:
+
+```sh
+ctest --test-dir build -C Debug -L config --output-on-failure
+ctest --test-dir build -C Debug -L infra --output-on-failure
+```
 
 No GCC/Clang com suporte aos sanitizers, também é possível executar:
 
@@ -199,7 +257,8 @@ cmake --build build-tidy --parallel
 ```
 
 O CMake passa ao clang-tidy as mesmas definições e caminhos de inclusão usados
-na compilação. Use um diretório novo para a primeira análise completa; builds
+na compilação. Aplicativo, bibliotecas próprias e testes são analisados;
+o código baixado de SQLite/libyaml fica fora do clang-tidy. Use um diretório novo para a primeira análise completa; builds
 incrementais só analisam novamente as fontes que precisarem ser recompiladas.
 No Windows, execute em um Developer PowerShell do Visual Studio e substitua
 `clang-18`/`clang-tidy-18` pelos nomes locais `clang`/`clang-tidy`.
@@ -210,10 +269,11 @@ configuram a proteção da branch.
 
 ## Próximas extensões
 
-A primeira extensão implementada transforma o cadastro isolado em uma equipe
-com múltiplos funcionários e remuneração mensal. A evolução proposta está em
-[`docs/design.md`](docs/design.md): persistência, edição e histórico de salários,
-mantendo regras de domínio independentes do console.
+A aplicação já gerencia múltiplos funcionários, remuneração mensal e persistência
+SQLite. A separação em bibliotecas permite adicionar uma UI de terminal depois,
+mantendo o domínio, a configuração e o armazenamento independentes da apresentação.
+Edição de perfis, histórico salarial e relatórios continuam como extensões futuras.
+As decisões desta etapa estão em [`docs/persistence.md`](docs/persistence.md).
 
 Os exercícios de HackerRank/VanHack e os binários antigos foram removidos da
 árvore atual. Permanecem no histórico Git. Alocação dinâmica, structs, strings,

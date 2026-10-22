@@ -13,6 +13,7 @@ typedef struct
 {
     FILE *input;
     FILE *output;
+    WorkforceStore *store;
 } Console;
 
 static int read_text(Console *console, const char *prompt, char *text, size_t capacity)
@@ -121,10 +122,13 @@ static void print_status(Console *console, WorkforceStatus status)
     case WORKFORCE_OVERFLOW:
         fputs("Limite numerico excedido.\n", console->output);
         break;
+    case WORKFORCE_IO_ERROR:
+        fprintf(console->output, "Erro de banco de dados: %s\n", store_error(console->store));
+        break;
     }
 }
 
-static int register_worker(Console *console, Team *team)
+static int register_worker(Console *console)
 {
     WorkerProfile profile = {0};
     int64_t age;
@@ -155,7 +159,7 @@ static int register_worker(Console *console, Team *team)
     {
         return 0;
     }
-    status = team_add(team, &profile, &id);
+    status = store_add_worker(console->store, &profile, &id);
     if (status == WORKFORCE_OK)
     {
         fprintf(console->output, "Funcionario cadastrado. ID: %" PRIu32 "\n", id);
@@ -195,18 +199,20 @@ static void list_workers(Console *console, const Team *team)
     }
 }
 
-static int manage_worker(Console *console, Team *team, int option)
+static int manage_worker(Console *console, int option)
 {
     int64_t id;
-    Worker *worker;
+    Worker worker = {0};
+    WorkforceStatus status;
     if (!read_number(console, "ID do funcionario: ", 1, UINT32_MAX, &id))
     {
         return 0;
     }
-    worker = team_find(team, (uint32_t)id);
-    if (worker == NULL)
+    status = store_find(console->store, (uint32_t)id, &worker);
+    worker_dispose(&worker);
+    if (status != WORKFORCE_OK)
     {
-        print_status(console, WORKFORCE_NOT_FOUND);
+        print_status(console, status);
         return 1;
     }
     if (option == 3)
@@ -223,7 +229,7 @@ static int manage_worker(Console *console, Team *team, int option)
         contract.year = (int)year;
         contract.month = (int)month;
         contract.hours = (int)hours;
-        print_status(console, worker_add_contract(worker, contract));
+        print_status(console, store_add_contract(console->store, (uint32_t)id, contract));
     }
     else if (option == 4)
     {
@@ -233,24 +239,20 @@ static int manage_worker(Console *console, Team *team, int option)
         {
             return 0;
         }
-        print_status(console, worker_remove_contract(worker, (size_t)(number - 1)));
+        print_status(console,
+                     store_remove_contract(console->store, (uint32_t)id, (size_t)(number - 1)));
     }
     else
     {
-        print_status(console, team_remove(team, (uint32_t)id));
+        print_status(console, store_remove_worker(console->store, (uint32_t)id));
     }
     return 1;
 }
 
-static int payroll(Console *console, const Team *team)
+static void print_payroll(Console *console, const Team *team, int year, int month)
 {
-    int64_t year, month, total = 0;
+    int64_t total = 0;
     size_t i;
-    if (!read_number(console, "Ano: ", 1, 9999, &year) ||
-        !read_number(console, "Mes: ", 1, 12, &month))
-    {
-        return 0;
-    }
     /* Check the full team before printing a partial payroll. */
     for (i = 0; i < team->count; ++i)
     {
@@ -259,7 +261,7 @@ static int payroll(Console *console, const Team *team)
         if (status != WORKFORCE_OK || total > INT64_MAX - income)
         {
             print_status(console, status == WORKFORCE_OK ? WORKFORCE_OVERFLOW : status);
-            return 1;
+            return;
         }
         total += income;
     }
@@ -275,20 +277,40 @@ static int payroll(Console *console, const Team *team)
     fputs("Total da equipe: ", console->output);
     print_money(console->output, total);
     fputc('\n', console->output);
+}
+
+static int payroll(Console *console)
+{
+    Team team = {0};
+    int64_t year, month;
+    WorkforceStatus status;
+    if (!read_number(console, "Ano: ", 1, 9999, &year) ||
+        !read_number(console, "Mes: ", 1, 12, &month))
+    {
+        return 0;
+    }
+    status = store_list(console->store, &team);
+    if (status == WORKFORCE_OK)
+    {
+        print_payroll(console, &team, (int)year, (int)month);
+    }
+    else
+    {
+        print_status(console, status);
+    }
+    team_dispose(&team);
     return 1;
 }
 
-int console_run(FILE *input, FILE *output)
+int console_run(FILE *input, FILE *output, WorkforceStore *store)
 {
-    Team team = {0};
-    Console console = {input, output};
+    Console console = {input, output, store};
     int running = 1;
-    if (input == NULL || output == NULL)
+    if (input == NULL || output == NULL || store == NULL)
     {
         return EXIT_FAILURE;
     }
-    fputs("Workforce - gerenciamento de equipe\nDados mantidos apenas durante esta sessao.\n",
-          output);
+    fputs("Workforce - gerenciamento de equipe\nDados persistidos em SQLite.\n", output);
     while (running)
     {
         int64_t option;
@@ -305,22 +327,33 @@ int console_run(FILE *input, FILE *output)
             running = 0;
             break;
         case 1:
-            running = register_worker(&console, &team);
+            running = register_worker(&console);
             break;
         case 2:
-            list_workers(&console, &team);
+        {
+            Team team = {0};
+            WorkforceStatus status = store_list(store, &team);
+            if (status == WORKFORCE_OK)
+            {
+                list_workers(&console, &team);
+            }
+            else
+            {
+                print_status(&console, status);
+            }
+            team_dispose(&team);
             break;
+        }
         case 3:
         case 4:
         case 6:
-            running = manage_worker(&console, &team, (int)option);
+            running = manage_worker(&console, (int)option);
             break;
         case 5:
-            running = payroll(&console, &team);
+            running = payroll(&console);
             break;
         }
     }
-    team_dispose(&team);
     fputs("Sessao encerrada.\n", output);
     return ferror(input) || ferror(output) ? EXIT_FAILURE : EXIT_SUCCESS;
 }

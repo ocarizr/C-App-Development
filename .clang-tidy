@@ -9,5 +9,5 @@ Checks: >-
   bugprone-narrowing-conversions,
   readability-braces-around-statements
 WarningsAsErrors: '*'
-HeaderFilterRegex: '(^|[/\\])(app|include|src|tests)[/\\]'
+HeaderFilterRegex: '(^|[/\\])(app|libs|tests)[/\\]'
 FormatStyle: file

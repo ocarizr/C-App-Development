@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(Workforce VERSION 1.0.0 LANGUAGES C)
 
+include(cmake/CheckSourceLayout.cmake)
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
@@ -22,25 +24,15 @@ if(WORKFORCE_SANITIZERS)
     endif()
 endif()
 
-add_library(workforce_domain src/workforce.c src/money.c)
-target_include_directories(workforce_domain PUBLIC include)
-target_link_libraries(workforce_domain PRIVATE project_options)
-
-add_library(workforce_console src/console.c)
-target_include_directories(workforce_console PUBLIC app)
-target_link_libraries(workforce_console PUBLIC workforce_domain PRIVATE project_options)
-
-add_executable(workforce app/main.c)
-target_link_libraries(workforce PRIVATE workforce_console project_options)
-
 include(CTest)
+include(cmake/Dependencies.cmake)
 if(BUILD_TESTING)
-    add_executable(domain_tests tests/domain_tests.c)
-    target_link_libraries(domain_tests PRIVATE workforce_domain project_options)
-    add_test(NAME domain COMMAND domain_tests)
-
-    add_executable(console_tests tests/console_tests.c)
-    target_link_libraries(console_tests PRIVATE workforce_console project_options)
-    add_test(NAME console COMMAND console_tests)
-    set_tests_properties(domain console PROPERTIES TIMEOUT 15)
+    add_library(workforce_test_support INTERFACE)
+    target_include_directories(workforce_test_support INTERFACE tests/support)
+    target_link_libraries(workforce_test_support INTERFACE project_options)
 endif()
+add_subdirectory(libs/domain)
+add_subdirectory(libs/config)
+add_subdirectory(libs/infra)
+add_subdirectory(app)
+configure_file(app.yaml app.yaml COPYONLY)

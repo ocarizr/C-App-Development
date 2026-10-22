@@ -12,7 +12,8 @@ typedef enum
     WORKFORCE_INVALID,
     WORKFORCE_NOT_FOUND,
     WORKFORCE_NO_MEMORY,
-    WORKFORCE_OVERFLOW
+    WORKFORCE_OVERFLOW,
+    WORKFORCE_IO_ERROR
 } WorkforceStatus;
 
 typedef enum
