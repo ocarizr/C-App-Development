@@ -2,6 +2,7 @@
 /build/
 /build-*/
 /out/
+/release/
 /CMakeUserPresets.json
 CMakeFiles/
 CMakeCache.txt
