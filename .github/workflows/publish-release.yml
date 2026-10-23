@@ -63,7 +63,7 @@ jobs:
         run: >-
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
           -DWORKFORCE_STATIC_RUNTIME=ON
-          -DWORKFORCE_PACKAGE_VERSION=${{ needs.validate.outputs.version }}
+          "-DWORKFORCE_PACKAGE_VERSION:STRING=${{ needs.validate.outputs.version }}"
       - name: Build
         run: cmake --build build --config Release --parallel
       - name: Run tests

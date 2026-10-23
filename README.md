@@ -84,7 +84,7 @@ omita `-A x64` e adicione `-DCMAKE_BUILD_TYPE=Release` na configuração. O runt
 estático é uma opção para MSVC; Linux utiliza o runtime do sistema. Antes de
 instalar novamente, escolha uma pasta nova se quiser preservar uma configuração
 personalizada: a instalação copia o `app.yaml` padrão. Bancos não fazem parte do
-pacote. `-DWORKFORCE_PACKAGE_VERSION=1.1` define a versão no nome dos arquivos;
+pacote. `"-DWORKFORCE_PACKAGE_VERSION:STRING=1.1"` define a versão no nome dos arquivos;
 sem essa opção, o empacotamento usa a versão do projeto CMake.
 
 ## Publicar por tag
