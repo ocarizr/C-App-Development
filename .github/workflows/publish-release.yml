@@ -1,0 +1,123 @@
+name: Publish Release
+
+on:
+  push:
+    tags: ['V[0-9]*', 'v[0-9]*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      commit: ${{ steps.version.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate version and membership in master
+        id: version
+        shell: bash
+        env:
+          VERSION_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$VERSION_TAG" =~ ^[vV][0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo 'Expected a version tag such as V1.1 or v1.1.0.' >&2
+            exit 1
+          fi
+          commit=$(git rev-parse HEAD)
+          test "$(git rev-parse "${VERSION_TAG}^{commit}")" = "$commit"
+          git merge-base --is-ancestor "$commit" origin/master
+          echo "version=${VERSION_TAG:1}" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+  package:
+    needs: validate
+    name: Package / ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            platform: windows-x64
+            suffix: .exe
+          - os: ubuntu-24.04
+            platform: linux-x64
+            suffix: ''
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate.outputs.commit }}
+          persist-credentials: false
+      - name: Configure Release and static Windows runtime
+        run: >-
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          -DWORKFORCE_STATIC_RUNTIME=ON
+          -DWORKFORCE_PACKAGE_VERSION=${{ needs.validate.outputs.version }}
+      - name: Build
+        run: cmake --build build --config Release --parallel
+      - name: Run tests
+        run: ctest --test-dir build -C Release --output-on-failure --no-tests=error
+      - name: Install runtime bundle
+        run: cmake --install build --config Release --prefix "${{ github.workspace }}/build/stage" --component Runtime
+      - name: Exercise the installed application
+        run: >-
+          cmake "-DAPP=${{ github.workspace }}/build/stage/workforce${{ matrix.suffix }}"
+          "-DWORK_DIR=${{ github.workspace }}/build/package-smoke"
+          -P app/tests/sessions.cmake
+      - name: Create archive
+        working-directory: build
+        run: cpack -C Release
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-${{ matrix.platform }}
+          path: |
+            build/packages/*.zip
+            build/packages/*.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  publish:
+    needs: [validate, package]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: package-*
+          merge-multiple: true
+          path: dist
+      - name: Create checksums and publish the tagged release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          cd dist
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 2
+          sha256sum workforce-* > SHA256SUMS.txt
+          existing=$(gh release view "$VERSION_TAG" --json isDraft --jq .isDraft 2>/dev/null) || existing=missing
+          if [[ "$existing" == false ]]; then
+            echo "Release $VERSION_TAG is already published; leaving its assets intact."
+            exit 0
+          fi
+          if [[ "$existing" == missing ]]; then
+            gh release create "$VERSION_TAG" --verify-tag --draft \
+              --title "Workforce $VERSION_TAG" --generate-notes
+          fi
+          gh release upload "$VERSION_TAG" workforce-* SHA256SUMS.txt --clobber
+          gh release edit "$VERSION_TAG" --draft=false

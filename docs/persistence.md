@@ -15,8 +15,10 @@
 
 Todos os targets de biblioteca são declarados explicitamente como `STATIC`,
 inclusive SQLite, libyaml e Expat. Linux produz arquivos `.a`; MSVC produz `.lib`.
-Não há dependência das DLLs dessas três bibliotecas em execução. O runtime C do sistema
-segue o padrão do compilador; não se trata de um executável totalmente estático.
+Não há dependência das DLLs dessas três bibliotecas em execução. Nos pacotes Windows,
+`WORKFORCE_STATIC_RUNTIME=ON` também vincula estaticamente o runtime C do MSVC,
+incluindo as dependências. Builds normais seguem o padrão do compilador e Linux
+mantém a dependência do runtime do sistema.
 
 As APIs públicas estão em `libs/<componente>/include`, implementações em `src` e
 testes em `tests`, com um `CMakeLists.txt` por componente. A infraestrutura não

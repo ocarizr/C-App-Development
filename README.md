@@ -12,6 +12,21 @@ A interface tem abas, formulários, botões e tabelas, com telas modulares escri
 em XML e bindings MVVM. Relatórios mensais filtram por departamento e nível,
 mostram remuneração e subtotais e exportam CSV.
 
+## Baixar uma release
+
+Os pacotes estão em [Releases](https://github.com/ocarizr/C-App-Development/releases).
+No Windows x64, baixe `workforce-<versao>-windows-x64.zip`, extraia tudo e execute
+`workforce.exe` dentro da pasta extraída. Pelo terminal, entre nessa pasta e use
+`.\workforce.exe`. Não execute dentro do ZIP. O pacote inclui `app.yaml`, `ui/`,
+documentação e licenças; o runtime C do MSVC é estático, sem exigir o Visual C++
+Redistributable. O banco `workforce.db` é criado no primeiro uso. Use uma pasta
+gravável e preserve seu banco e configuração nas atualizações. O pacote Linux
+x64 é `.tar.gz`, compilado no Ubuntu 24.04 e requer uma distribuição compatível
+com sua libc; execute `./workforce` na pasta extraída.
+
+`SHA256SUMS.txt` permite conferir a integridade dos dois arquivos. No PowerShell:
+`Get-FileHash .\workforce-<versao>-windows-x64.zip -Algorithm SHA256`.
+
 ## Compilar e executar
 
 Requisitos: CMake 3.20+, compilador C11 e acesso à rede na primeira configuração.
@@ -50,6 +65,54 @@ diretamente com os XMLs de autoria:
 ```powershell
 .\build\app\Debug\workforce.exe --ui app/ui/application.xml
 ```
+
+## Preparar um pacote local
+
+O CMake instala somente os recursos de execução. No Windows, com CMake no PATH:
+
+```powershell
+cmake -S . -B build-package -A x64 -DBUILD_TESTING=ON -DWORKFORCE_STATIC_RUNTIME=ON
+cmake --build build-package --config Release --parallel
+ctest --test-dir build-package -C Release --output-on-failure --no-tests=error
+cmake --install build-package --config Release --prefix release --component Runtime
+cpack --config build-package/CPackConfig.cmake -C Release
+```
+
+A pasta `release/` pode ser usada diretamente; os arquivos compactados ficam em
+`build-package/packages/`. Ambos ficam fora do versionamento. Para gerar no Linux,
+omita `-A x64` e adicione `-DCMAKE_BUILD_TYPE=Release` na configuração. O runtime
+estático é uma opção para MSVC; Linux utiliza o runtime do sistema. Antes de
+instalar novamente, escolha uma pasta nova se quiser preservar uma configuração
+personalizada: a instalação copia o `app.yaml` padrão. Bancos não fazem parte do
+pacote. `-DWORKFORCE_PACKAGE_VERSION=1.1` define a versão no nome dos arquivos;
+sem essa opção, o empacotamento usa a versão do projeto CMake.
+
+## Publicar por tag
+
+O workflow [Publish Release](.github/workflows/publish-release.yml) é acionado
+somente pelo envio de tags com duas ou três partes, como `V1.1`, `V1.2` e `v1.2.0`.
+Ele valida o formato e exige que o commit marcado pertença ao histórico da
+`master`. Merge de PR e push comum na branch não publicam releases. O commit
+pode ser o topo da `master` ou um commit anterior que contenha esse workflow.
+Tags anotadas e leves são aceitas.
+
+Após integrar o workflow na `master`, publique uma versão assim:
+
+```sh
+git switch master
+git pull --ff-only
+git tag -a V1.1 -m "Workforce V1.1"
+git push origin V1.1
+```
+
+A pipeline compila exatamente o commit marcado, executa CTest em Release para
+Windows/Linux e testa os mesmos fluxos no aplicativo instalado. Somente depois
+dos dois pacotes passarem, cria um draft, anexa os binários e checksums e publica
+a release. Usa o `GITHUB_TOKEN` com escrita apenas no job de publicação, sem
+PAT adicional. O workflow roda em runners hospedados pelo GitHub. Não mova uma
+tag publicada; use um novo número para outra versão. Reexecutar uma publicação
+concluída preserva seus assets; um draft incompleto pode ser concluído pela
+reexecução do workflow.
 
 ## Usar a interface
 
@@ -209,8 +272,8 @@ verificações se complementam e não constituem uma prova de segurança de mem�
 para todos os caminhos possíveis. Contratos de ownership estão nos headers e
 nos pontos de transferência de recursos.
 
-Os workflows rodam em pull requests para `master`, pushes na `master` e manualmente.
-As badges são independentes:
+Os workflows de qualidade rodam em pull requests para `master`, pushes na `master`
+e manualmente. A publicação por tag é independente. As badges são independentes:
 
 | Badge | Verificação |
 | --- | --- |

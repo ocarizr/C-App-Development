@@ -62,6 +62,9 @@ set(EXPAT_BUILD_PKGCONFIG OFF)
 set(EXPAT_ENABLE_INSTALL OFF)
 set(EXPAT_SHARED_LIBS OFF)
 set(EXPAT_DTD OFF)
+if(MSVC)
+    set(EXPAT_MSVC_STATIC_CRT ${WORKFORCE_STATIC_RUNTIME})
+endif()
 FetchContent_Declare(expat_source
     URL https://github.com/libexpat/libexpat/releases/download/R_2_9_0/expat-2.9.0.tar.gz
     URL_HASH SHA256=16afbb9cefead2aa278105cf27d9f597bde7fbf3dbb85015857ca7ca6a4e89ba)
